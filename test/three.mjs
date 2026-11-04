@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   admitEvidence,
+  backupHint,
   backupClaimOk,
   withoutFullBackupClaim,
   backgroundJobId,
@@ -169,6 +170,7 @@ assert.equal(pointer.includes("第 4 轮读到的 ledger.txt"), true);
 assert.equal(pointer.includes(`sha256:${saved.sha256.slice(0, 12)}`), true);
 assert.equal(pointer.includes(`${saved.bytes}字节`), true);
 assert.equal(pointer.includes("[call-raw]"), true);
+assert.equal(pointer.includes(root), false);
 assert.equal(pointer.includes("当前内容"), false);
 assert.equal(readResultLabel("bash", "ledger.txt", 4), "");
 const rawCard = buildCard("", "", [{
@@ -225,7 +227,7 @@ assert.equal(restoreToolText({ role: "tool", content: "pruned [... tool result m
 const prunedMessages = [{ role: "tool", toolCallId: "missing", content: "x\n[... tool result middle pruned ...]\n" }];
 assert.equal(backupClaimOk(prunedMessages), false);
 assert.equal(backupClaimOk([restored]), true);
-const claimed = `卡片\n省略的工具原文在 /tmp/cut.txt。只读这个文件所在目录，不要扫别的会话。需要这条原文再读，不要默认读进来。`;
+const claimed = `卡片\n${backupHint("/tmp/cut.txt")}`;
 assert.equal(withoutFullBackupClaim(claimed, "/tmp/cut.txt").includes("省略的工具原文在"), false);
 assert.equal(withoutFullBackupClaim(claimed, "/tmp/cut.txt").includes("无完整备份"), true);
 

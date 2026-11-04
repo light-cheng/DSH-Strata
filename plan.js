@@ -523,8 +523,13 @@ export function commandLine(command) {
   return `命令：${first.slice(0, 80)}`;
 }
 
+export function archiveId(file) {
+  const name = String(file || "").split(/[\\/]/).pop() || "";
+  return name.replace(/\.txt$/, "");
+}
+
 export function backupHint(shadowFile) {
-  return `省略的工具原文在 ${shadowFile}。只读这个文件所在目录，不要扫别的会话。需要这条原文再读，不要默认读进来。`;
+  return `省略的工具原文在本地存档 ${archiveId(shadowFile)}。需要时用 decompress({"id":"${archiveId(shadowFile)}"}) 或 search_context 取回，不要默认读进来。 Omitted originals are in the local archive; restore with decompress or search_context only when needed.`;
 }
 
 export function attachBackupHint(card, shadowFile) {
