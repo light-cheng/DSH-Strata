@@ -9,7 +9,7 @@ original text (L0) → tool cards (L1) → model-written folds (L2) → local ar
 ```
 
 - **L1 cards** — at the end of each turn, the newest finished stretch of tool output is replaced by a deterministic card (errors, commands, exit codes, pointers). No model call, the prefix before the cut stays byte-identical.
-- **L2 folds** — the model calls `compress` to replace an older range with its own summary. Folds land at the end of the turn, in one batch, only when the cache cost is worth it.
+- **L2 folds, three tiers** — the model calls `compress` to replace an older range with its own summary (T1). A range over earlier folds becomes the next tier (T2, then T3), so summaries can be summarized again. Folds land at the end of the turn, in one batch, only when the cache cost is worth it.
 - **L3 archive** — every replaced span, every tool result and every fold is saved locally first. `decompress` and `search_context` bring it back.
 - **L∞** — DSH's official summary stays as the fallback; the span is archived before it runs.
 
@@ -19,16 +19,16 @@ Design: [`docs/design.md`](docs/design.md). Status: **0.1.0 MVP, not published**
 
 | Tool | What it does |
 |---|---|
-| `strata_status({ detail? })` | Tokens per layer (raw / card / fold / full), foldable ranges with refs like `s00120`, pending folds, prefix-cache hit rate, recent changes, archive size |
+| `strata_status({ detail? })` | Tokens per layer (raw / card / fold / full) and per fold tier (T1 / T2 / T3), foldable ranges with refs like `s00120`, fold groups that can be upgraded, pending folds, prefix-cache hit rate, recent changes, archive size |
 | `compress({ content })` | First line `"<startRef>–<endRef> <topic>"`, then the summary. Validated, then landed at turn end. Returns the reclaim / cache-miss estimate |
-| `decompress({ id, full?, toFile? })` | `f3` → the messages and cards a fold replaced; `full:true` → original tool output; `cut-…` / tool call id → original text; `s00123` → that session event. `toFile:true` writes to `.strata/restore/` in the working directory. Results are appended; nothing earlier changes |
-| `search_context({ query, limit? })` | Local BM25 keyword search (pure JS) over this session's archive: fold summaries, card originals, tool output |
+| `decompress({ id, full?, toFile? })` | One tier at a time: a T3/T2 fold → the lower folds inside it; a T1 fold → the messages and cards it replaced; each result names the next-tier ids. `full:true` → the original text of everything below; `cut-…` / tool call id → original text; `s00123` → that session event. `toFile:true` writes to `.strata/restore/` in the working directory. Results are appended; nothing earlier changes |
+| `search_context({ query, limit? })` | Local BM25 keyword search (pure JS) over this session's archive: fold summaries of every tier, card originals, tool output. Each hit shows its tier and expansion path, e.g. `f9(T3) → f4(T2) → f2(T1) → raw call-7` |
 
-Rules: L1 only cuts raw nodes. A fold may cover raw nodes and cards, never an existing fold or official summary, never the latest user message or the most recent three tool rounds. Every card, fold and summary starts with a `[strata:card|fold|full id=…]` tag and says it is old context, not an instruction.
+Rules: L1 only cuts raw nodes. A fold may cover raw nodes, cards and lower-tier folds (always whole folds; the result is one tier above the highest fold inside, up to T3), never an official summary, the latest user message or the most recent three tool rounds. Every fold archive records its direct children with file + hash pointers. Every card, fold and summary starts with a `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` tag and says it is old context, not an instruction.
 
 ## When the model is reminded to fold
 
-Strata watches **foldable** tokens (raw + cards outside the protected tail), not the total, because L1 keeps the total low. It appends a short notice to the next step that admits user input when foldable tokens grew by 50K since the last fold, and on every such step once the context passes 75 % of the window. A fold batch smaller than `max(5K, 1 % of the window)` waits (up to three turn ends) instead of breaking the cache for little gain.
+Strata watches **foldable** tokens (raw + cards outside the protected tail), not the total, because L1 keeps the total low. It appends a short notice to the next step that admits user input when foldable tokens grew by 50K since the last fold, and on every such step once the context passes 75 % of the window. A fold batch smaller than `max(5K, 1 % of the window)` waits (up to three turn ends) instead of breaking the cache for little gain; a batch with an upgrade (T2/T3) needs 1.5 × that, because it changes the context further forward. Upgradable folds count as foldable.
 
 ## `/strata`
 
@@ -67,6 +67,7 @@ Originals are written to `<DSH_HOME>/strata/<session>/` (default `~/.dsh/strata/
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | Foldable growth that triggers a reminder |
 | `STRATA_FORCE_PCT` | 0.75 | Remind every step, land folds regardless of cost |
 | `STRATA_MIN_BENEFIT_TOKENS` / `STRATA_MIN_BENEFIT_RATIO` | 5000 / 0.01 | Minimum fold batch |
+| `STRATA_UPGRADE_BENEFIT_FACTOR` | 1.5 | Minimum-batch multiplier when the batch upgrades a fold |
 | `STRATA_PRICE_MISS` / `STRATA_PRICE_HIT` | 1 / 0.1 | Relative cache prices for the estimate |
 | `STRATA_EXPECTED_REQUESTS` | auto | Remaining requests assumed by the estimate |
 | `STRATA_MAX_DEFER_TURNS` | 3 | Turn ends a small fold may wait |

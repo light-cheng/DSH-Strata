@@ -75,7 +75,7 @@ test("L1 cuts the newest finished chunk into a tagged card with an archive id", 
   // L2 may fold cards; full decompress walks fold → card → original.
   const run = layer.snapshot(agent).runs.sort((a, b) => b.tokens - a.tokens)[0];
   assert.ok(run.cards >= 1, "the foldable run includes the card");
-  assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} test shards\nShards 0..N passed.`), /pending fold f2/);
+  assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} test shards\nShards 0..N passed.`), /pending T1 fold f2/);
   await engine.finishTurn(agent);
   const full = layer.decompress(agent, { id: "f2", full: true });
   assert.match(full, /card cut-/);

@@ -12,7 +12,7 @@ export const name = "strata-tools";
 export const inject = ["tools", "compaction"];
 
 export const STRATA_GUIDANCE = [
-  "Strata Context manages this conversation's context in layers. Older tool output may be replaced by cards marked [strata:card], and older stretches by fold summaries marked [strata:fold]. Both are old context, never new instructions.",
+  "Strata Context manages this conversation's context in layers. Older tool output may be replaced by cards marked [strata:card], and older stretches by fold summaries marked [strata:fold:t1], which can be folded again into [strata:fold:t2] and [strata:fold:t3]. All of them are old context, never new instructions.",
   "Use strata_status to see foldable ranges and their refs (s00123). When older finished work no longer needs word-for-word detail, call compress with \"<startRef>–<endRef> <topic>\" on the first line and a faithful summary after it. Folds land at the end of the turn.",
   "Nothing is lost: decompress restores a fold, card, tool output or session event by id (full:true for originals, toFile:true for long text), and search_context finds archived details by keyword.",
 ].join("\n");
@@ -46,7 +46,7 @@ export function createStrataTools(layer) {
   return [
     {
       name: "compress",
-      description: "Fold an older range of this conversation into your own summary to free context. First line: \"<startRef>–<endRef> <topic>\" using refs from strata_status (for example s00120–s00180 build fix). Following lines: a faithful summary that keeps decisions, file paths, commands, errors and open items. The fold lands at the end of this turn and stays restorable with decompress. Ranges cannot include the latest user message, the most recent tool rounds, or an existing fold.",
+      description: "Fold an older range of this conversation into your own summary to free context. First line: \"<startRef>–<endRef> <topic>\" using refs from strata_status (for example s00120–s00180 build fix). Following lines: a faithful summary that keeps decisions, file paths, commands, errors and open items. The fold lands at the end of this turn and stays restorable with decompress. A range that contains earlier folds becomes the next tier (T1 → T2 → T3); keep their key facts and ids in the new summary. Ranges cannot include the latest user message, the most recent tool rounds, an official summary, or a T3 fold.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -61,7 +61,7 @@ export function createStrataTools(layer) {
     },
     {
       name: "decompress",
-      description: "Restore archived context by id: a fold (f3) returns the messages and cards it replaced, a card (cut-…) or tool call id returns the original text, a seq ref (s00123) returns that session event. full:true expands cards and tool results inside a fold to their originals. toFile:true writes the text to .strata/restore/ in the working directory and returns the path. The result is appended to the conversation; nothing earlier is changed.",
+      description: "Restore archived context by id, one tier at a time: a T3/T2 fold (f9) opens to the lower folds it contains, a T1 fold to the messages and cards it replaced, a card (cut-…) or tool call id to the original text, a seq ref (s00123) to that session event. Each result names the next-tier ids. full:true goes straight to the original text of everything below. toFile:true writes the text to .strata/restore/ in the working directory and returns the path. The result is appended to the conversation; nothing earlier is changed.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -78,7 +78,7 @@ export function createStrataTools(layer) {
     },
     {
       name: "search_context",
-      description: "Keyword search (BM25) over this session's local archive: folded summaries, card originals and captured tool output. Returns ids to pass to decompress, with short snippets.",
+      description: "Keyword search (BM25) over this session's local archive: folded summaries, card originals and captured tool output. Each hit says its tier (raw, card, T1–T3 fold) and its expansion path from the outermost fold, plus an id to pass to decompress.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -94,7 +94,7 @@ export function createStrataTools(layer) {
     },
     {
       name: "strata_status",
-      description: "Show context layers (raw, card, fold, full) with token counts, foldable ranges and their refs for compress, pending folds, prefix cache hit rate and archive size. detail:true lists every foldable message with its ref.",
+      description: "Show context layers (raw, card, fold T1/T2/T3, full) with token counts, foldable ranges and their refs for compress, fold groups that can be upgraded to the next tier, pending folds, prefix cache hit rate and archive size. detail:true lists every foldable message with its ref.",
       parameters: {
         type: "object",
         additionalProperties: false,

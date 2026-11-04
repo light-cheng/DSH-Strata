@@ -19,6 +19,10 @@
 //   recall  facts planted inside tool output, the model is asked to fold that
 //           range, then asked for details that are only in the folded
 //           originals. Scores whether decompress / search_context recover them.
+//   tiers   four short log tasks, each folded to T1, pairs folded to T2, all
+//           folded to T3; then the exact lines are asked for. Scores recovery
+//           through tier-by-tier decompress / full:true / search_context and
+//           reports the tier counts reached (strata arm only).
 // Arms
 //   strata  this plugin
 //   stock   same profile with Strata forced to fall back (STRATA_FAKE_CONFLICT)
@@ -39,7 +43,7 @@ const option = (name, fallback) => {
 };
 
 const RUN = flag("run");
-const SUITES = option("suite", "all") === "all" ? ["fill", "amnesia", "recall"] : option("suite", "all").split(",");
+const SUITES = option("suite", "all") === "all" ? ["fill", "amnesia", "recall", "tiers"] : option("suite", "all").split(",");
 const ARMS = option("arms", "strata,stock").split(",");
 const DSH = process.env.DSH_BIN || "dsh";
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -159,6 +163,27 @@ const SUITE_RUNNERS = {
     const fold = task(arm, setup, id, fixtures.recall.fold);
     const ask = task(arm, setup, id, fixtures.recall.question);
     return { metrics: metrics(ask, setup), foldCalls: metrics(fold, setup).compress, recall: score(finalText(ask), fixtures.recall.expected) };
+  },
+  tiers(arm, setup) {
+    if (arm !== "strata") return { skipped: "tiers needs the Strata tools" };
+    if (RUN) fixtures.writeTiers(setup.cwd);
+    let id = "";
+    const steps = [];
+    for (const prompt of fixtures.tiers.tasks) {
+      const run = task(arm, setup, id, prompt);
+      id ||= sessionIdOf(run);
+      steps.push(task(arm, setup, id, fixtures.tiers.foldT1));
+    }
+    steps.push(task(arm, setup, id, fixtures.tiers.foldT2));
+    steps.push(task(arm, setup, id, fixtures.tiers.foldT3));
+    const status = task(arm, setup, id, "Call strata_status and paste its 'Folds by tier' line verbatim.");
+    const ask = task(arm, setup, id, fixtures.tiers.question);
+    return {
+      metrics: metrics(ask, setup),
+      compressCalls: steps.reduce((sum, run) => sum + metrics(run, setup).compress, 0),
+      tierLine: (finalText(status).match(/Folds by tier:[^\n]*/) || [""])[0],
+      recall: score(finalText(ask), fixtures.tiers.expected),
+    };
   },
 };
 

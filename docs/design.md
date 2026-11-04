@@ -299,7 +299,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 | 接口 | 结论 |
 |---|---|
 | `internal/config` | ✅ 存在。`cordis-plugin-loader` 用 `fiber.ctx.waterfall(fiber, "internal/config", raw, () => raw)`，`next()` 是同步的，`gate.js` 的写法照旧可用 |
-| `surfaceOp` | ✅ `dsh-session` 只认 `"append"` 和 `{ op: "replace", startSeq, endSeq }`，替换后 `surface.replaceGeneration += 1`。fold 用的就是 replace，和 L1 卡片同一条路 |
+| `surfaceOp` | ✅ `dsh-session` 只认 `"append"` 和 `{ op: "replace", startSeq, endSeq }`，替换后 `surface.replaceGeneration += 1`。fold 用的就是 replace，和 L1 卡片同一条路。replace 一个**已经含有 checkpoint 的范围**也允许，见 §11.7 |
 | `agent.runMaintenance` | ✅ 存在，原版 `compactNow` 也在里面跑。fold 落地和 L1 小切都在 live-compact 原有的 `finishTurn` 这一次维护里完成（先 L2 后 L1） |
 | 工具执行上下文 | ✅ `tool.execute(args, exec)`，`exec.agent.session` 可用 |
 | 命令 | ✅ `ctx.commands.register({ definitionId, name, description, input?, handler })`，`handler(invocation)` 拿到 `invocation.agent` 和 `rawInput` |
@@ -316,7 +316,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 - **Q3 L1 停止线**：改成按比例 `窗口 × STRATA_L1_STOP_RATIO`（默认 0.65）。L2 没有单独的停止线，75% 以上每次有新输入都提醒、并且无视代价直接落地；再往上交给 L∞（0.8 + headroom）。
 - **Q4 fork / 子会话**：没做。存档只按当前 session id 找。
 - **Q5 回退 / 编辑**：待落地的 fold 记的是 seq 列表；落地前逐个重新校验（节点还在、顺序不变、仍是 raw/card），变了就丢弃并记日志，不会落到错的位置。L1 这一刀如果和待落地的 fold 重叠，这一轮不切。
-- **T2**：范围里有 fold 或 full 节点就拒绝，提示 T2 不在 MVP。
+- **多级（T1–T3）**：已按 55b37db 的范围实现，见 §11.6。
 
 ### 11.3 接管检测
 
@@ -342,3 +342,42 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 - **`emergencyPct` 95% 截断**：§3 表里有，§7 MVP 清单没有，没做。
 - **评测**：live-compact 仓库里没有「长填日志」「失忆对比」两套的脚本，`eval/` 是按描述重写的（fill / amnesia / recall 三套，strata 和 stock 两组）。默认只打印计划，`--run` 才真跑，每组用 `eval/.work/` 下独立的 `DSH_HOME`。**本会话没有跑。**
 - 去掉了 live-compact 的 `bin/`（指向上游的下载域名）。
+
+### 11.6 多级蒸馏 T1–T3
+
+- **级别从内容推出来**，模型不用指定：范围里只有 raw/card → T1；含有 fold → 里面最高一级 + 1。T3 的 fold 不能再折（返回「T3 is the highest tier」）；official 摘要（full）永远不再折。
+- **不会切开下级 fold**：fold 在 surface 上是单个节点，范围要么整个包住它，要么不碰它，所以「不能切开」天然成立；校验时 fold 节点和 raw/card 一样要满足 tool-pairing 边界。
+- **标签**：`[strata:fold:t1|t2|t3 id=fN range=sA-sB]`。旧的不带级别的 `[strata:fold …]` 当 T1 读。
+- **存档**：`fold-fN.json` 加 `tier` 和 `children`，每个直接子节点记 `kind`（fold / card / raw）、`id`、`tier`、`seq`、`ref` 和指针：下级 fold → `fold-fM.json` + sha256 前 16 位；卡片 → `cut-….txt` + sha256；工具原文 → `raw-….txt` + sha256；其他原话 → DSH 会话日志里的 `sessionSeq`。另外新增 `cards.json`，记录每张 L1 卡片替换了哪些 seq 和工具调用 id，`search_context` 用它从原文找回所属的卡片。
+- **checkpoint 文本**：每级都列出直接子节点的 id（`Contains: f1 (T1), f2 (T1), card cut-…`），并把下面各级折掉的工具调用 id 合并列出（R7：摘要的摘要即使丢了细节，下一级的入口还在）。
+- **decompress**：默认只往下一级——T3/T2 → 它包含的下级 fold 的摘要（每段标出 `→ decompress({"id":…})`），T1 → 原来的消息和卡片，卡片 → 原文；标题行写出「Next tier: …」。`full:true` 递归到底，卡片换成 cut 原文，工具结果换成 raw 原文。
+- **search_context**：每条结果标明级别（raw tool output / card original / T1–T3 fold），并给出从最外层 fold 往下的路径，例如 `f7(T3) → f6(T2) → f3(T1) → raw call-12 [on the surface]`；最外层不在 surface 上时标 `archive only`。
+- **strata_status**：多一行 `Folds by tier: T1 … · T2 … · T3 …`（块数和 token）；可折叠区间会标「含 N 个 fold → 会变成 Tn」；单独列出「Upgradable fold groups」（同一可折叠区间里两个以上 fold，从第一个到最后一个）。
+- **提醒和门槛**：T3 以下的 fold 也算「可折叠量」，所以提醒同样会覆盖升级。含升级的批次最小收益是普通门槛 × `STRATA_UPGRADE_BENEFIT_FACTOR`（默认 1.5）。
+
+### 11.7 DSH 是否允许 replace 一个含 checkpoint 的范围
+
+**允许。** `dsh-session` 0.2.1-rc.5 的 `planSurfaceEvent` 对 replace 只检查：起止 seq 都在 surface 上且顺序正确（`replacementRange`）；`sourceEventSeqs` 非空、无重复、都早于当前事件，并且**包含所有被替换的 surface 节点**（`assertSourceEventReferences`）；被替换的是 tool/result 时的改写规则（`assertToolResultRewrite`）；第 0 个节点是 system prompt 时只能由 system/message 改写（`assertSystemHeadRewrite`）。没有「不能替换 checkpoint」的规则（原版的大压缩本来就会把旧 checkpoint 一起压掉）。`test/tiers.test.mjs` 最后一个用例直接调用真实的 `foldSurface` 验证：两个 T1 replace 之后再 replace 这两个 checkpoint 成 T2，surface 变成 `[0, T2]`；`sourceEventSeqs` 漏掉被替换节点时报 `must include every shadowed surface node`。Strata 的 `sourceEventSeqs` 是 `[start, summary, ...被替换的 seq]`，满足要求。
+
+### 11.8 真机冒烟（不调模型）
+
+用 DSH Desktop 自带 CLI（`/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`，0.2.1-rc.5），临时 `DSH_HOME`，**不设 API key**，所以请求在发出前就因 `MISSING_CREDENTIAL` 失败，不产生费用：
+
+1. 只装 Strata：`--dump-config` 显示 `compaction-basic` 被 `disabled: true`，插入 `compaction-strata` / `strata-gate` / `strata-tools`。启动 headless 后，会话日志的 request header 里有 `compress`、`decompress`、`search_context`、`strata_status` 四个工具和 Strata 的系统提示段；stderr 没有任何「未接管」警告；`agent/pre-step` 的提醒钩子跑过第 1 步没有报错。
+2. 同时装 Strata 和 dsh-live-compact：stderr 打出 `strata: 本会话未接管。另一个插件 <LiveCompactEntry> 已经提供压缩。`，request header 里没有 Strata 的工具和提示段——让出路径（构造函数返回不注册服务的空对象）在真实 cordis loader 里可用。这次 live-compact 先加载；Strata 先加载的顺序（会走「包已安装 → 跑原版引擎」那条路）没有在真机上试。
+
+还没验证：真实模型下的 L1 切、fold 落地、提醒注入（需要 API key，属于评测）。
+
+### 11.9 安装与改动记录
+
+全部在临时目录里，没有碰用户日常的 profile、`~/.dsh/settings.yaml` 或任何全局配置。
+
+| 时间 | DSH_HOME / profile | 安装或改动 | 版本 / 来源 |
+|---|---|---|---|
+| 2026-11-04 | `$TMPDIR/dsh-home-smoke`（`/private/tmp/claude-501/dsh-home-smoke`）/ `headless` | `dsh plugin --profile headless add` Strata 本地包 | `@light-cheng/dsh-strata` 0.1.0，本分支 `npm pack` 的 `light-cheng-dsh-strata-0.1.0.tgz` |
+| 2026-11-04 | 同上 | 启动 `dsh headless --json "say hi"`（无 API key），生成一个会话目录 | — |
+| 2026-11-04 | `$TMPDIR/dsh-home-conflict`（`/private/tmp/claude-501/dsh-home-conflict`）/ `headless` | 同时安装 Strata 和 dsh-live-compact | Strata 0.1.0（同上）；`dsh-live-compact` 1.0.6，从 `768eff9` 源码本地 `npm pack`，未从上游下载站下载 |
+| 2026-11-04 | 同上 | 启动 `dsh headless --json "say hi"`（无 API key） | — |
+| 2026-11-04 | — | pnpm 因为不能硬链接用户的 `~/Library/pnpm/store`，自动改用 `/private/tmp/claude-501/.pnpm-store/v11` | pnpm 11.28.5（DSH 自带） |
+
+两个 profile 的设置文件（`cordis.patch.yml`）都保持 DSH 初始化时的空数组 `[]`，没有改。billion-context 没有安装。清理：删掉上面两个 `dsh-home-*` 目录和 `.pnpm-store` 即可。

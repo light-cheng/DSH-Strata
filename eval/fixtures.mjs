@@ -37,7 +37,23 @@ export function buildFixtures(seed = 20261104) {
     `artifact digest ${recallFacts[2]} signed by ${recallFacts[3]}`,
     logFile(random, 92, 600),
   ].join("\n");
+  const tierFacts = [
+    { file: "billing.log", fact: "invoice batch INV-58213 failed on shard 6" },
+    { file: "auth.log", fact: "token issuer rotated to kid=ed25519-7c41" },
+    { file: "search.log", fact: "reindex finished in 4217 seconds" },
+    { file: "storage.log", fact: "bucket quota raised to 9.5 TiB" },
+  ];
+  const tierLogs = tierFacts.map((item, index) => [logFile(random, 60 + index, 400), item.fact, logFile(random, 70 + index, 400)].join("\n"));
   return {
+    tiers: {
+      // Four short tasks; each is folded to T1, pairs to T2, everything to T3.
+      tasks: tierFacts.map((item) => `Read ./tiers/${item.file} completely with your file tools and tell me in one sentence what unusual line it contains.`),
+      foldT1: "Use strata_status and compress the range covering the most recent finished log task into a one-line summary (no identifiers). Reply OK.",
+      foldT2: "Use strata_status. Compress each pair of adjacent T1 folds into one T2 fold with a one-line summary (no identifiers). Reply OK.",
+      foldT3: "Use strata_status. Compress the adjacent T2 folds into one T3 fold with a one-line summary (no identifiers). Reply OK.",
+      question: "For each of billing.log, auth.log, search.log and storage.log, quote the unusual line exactly. Use decompress (one tier at a time or full:true) or search_context to recover it; do not guess.",
+      expected: ["INV-58213", "ed25519-7c41", "4217 seconds", "9.5 TiB"],
+    },
     fill: {
       files: fillFiles,
       chars: logs.reduce((sum, text) => sum + text.length, 0),
@@ -57,6 +73,10 @@ export function buildFixtures(seed = 20261104) {
     writeFill(dir) {
       mkdirSync(join(dir, "logs"), { recursive: true });
       logs.forEach((text, index) => writeFileSync(join(dir, "logs", `worker-${String(index).padStart(2, "0")}.log`), text));
+    },
+    writeTiers(dir) {
+      mkdirSync(join(dir, "tiers"), { recursive: true });
+      tierFacts.forEach((item, index) => writeFileSync(join(dir, "tiers", item.file), tierLogs[index]));
     },
     writeRecall(dir) {
       mkdirSync(join(dir, "recall"), { recursive: true });

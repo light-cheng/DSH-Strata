@@ -9,9 +9,11 @@ import { minBenefitFor, readSettings } from "../lib/settings.js";
 const checkpoint = (text) => ({ type: "user/message", data: { source: { kind: "compact-checkpoint" }, content: [{ type: "text", text }] } });
 
 test("stratum tags round-trip and classify surface events", () => {
-  const tag = stratumTag("fold", { id: "f3", range: "s00001-s00009" });
-  assert.equal(tag, "[strata:fold id=f3 range=s00001-s00009]");
-  assert.deepEqual(parseStratumTag(`${tag}\nbody`), { kind: "fold", attrs: { id: "f3", range: "s00001-s00009" } });
+  const tag = stratumTag("fold:t2", { id: "f3", range: "s00001-s00009" });
+  assert.equal(tag, "[strata:fold:t2 id=f3 range=s00001-s00009]");
+  assert.deepEqual(parseStratumTag(`${tag}\nbody`), { kind: "fold", tier: 2, attrs: { id: "f3", range: "s00001-s00009" } });
+  assert.equal(parseStratumTag("[strata:fold id=f1]").tier, 1, "untiered fold tag = T1");
+  assert.equal(stratumOf(checkpoint(`${tag}\nbody`)).tier, 2);
   assert.equal(stratumOf(checkpoint(`${tag}\nbody`)).stratum, "fold");
   assert.equal(stratumOf(checkpoint("[strata:card id=cut-1-aaaaaaaa]\n…")).id, "cut-1-aaaaaaaa");
   assert.equal(stratumOf(checkpoint("stock summary")).stratum, "full", "untagged checkpoint = full");
@@ -24,8 +26,10 @@ test("stratum tags round-trip and classify surface events", () => {
 test("no-double-compression rules", () => {
   assert.equal(l1MayCut("raw"), true);
   for (const stratum of ["card", "fold", "full"]) assert.equal(l1MayCut(stratum), false);
-  assert.equal(l2MayFold(["raw", "card", "raw"]).ok, true);
-  assert.equal(l2MayFold(["raw", "fold"]).ok, false);
+  assert.deepEqual(l2MayFold(["raw", "card", "raw"]), { ok: true, tier: 1, upgrade: false });
+  assert.deepEqual(l2MayFold([{ stratum: "fold", tier: 1 }, { stratum: "raw" }]), { ok: true, tier: 2, upgrade: true });
+  assert.deepEqual(l2MayFold([{ stratum: "fold", tier: 1 }, { stratum: "fold", tier: 2 }, { stratum: "card" }]), { ok: true, tier: 3, upgrade: true });
+  assert.equal(l2MayFold([{ stratum: "fold", tier: 3 }]).ok, false, "nothing above T3");
   assert.equal(l2MayFold(["full"]).ok, false);
   assert.equal(l2MayFold([]).ok, false);
   assert.equal(seqRef(42), "s00042");
