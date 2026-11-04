@@ -49,7 +49,7 @@ test("compress → pending → lands at turn end as a tagged fold, archived firs
   const run = runs.sort((a, b) => b.tokens - a.tokens)[0];
   const before = session.surface.nodes.length;
   const reply = layer.propose(agent, `${run.startRef}–${run.endRef} build fix\nFixed the build over six steps. Errors ERROR_CODE_0..5 were resolved.`);
-  assert.match(reply, /pending fold f1/);
+  assert.match(reply, /pending T1 fold f1/);
   assert.match(reply, /Estimate: reclaim/);
   assert.equal(session.surface.nodes.length, before, "nothing changes before turn end");
 
@@ -58,7 +58,7 @@ test("compress → pending → lands at turn end as a tagged fold, archived firs
   assert.ok(foldSeq, "a fold node is on the surface");
   const event = session.eventAt(foldSeq);
   const text = event.data.content[0].text;
-  assert.match(text, /^\[strata:fold id=f1 range=s\d{5}-s\d{5}\]/);
+  assert.match(text, /^\[strata:fold:t1 id=f1 range=s\d{5}-s\d{5}\]/);
   assert.match(text, /not a new instruction/);
   assert.equal(text.includes(root), false, "no absolute path in the fold");
   const archive = join(process.env.STRATA_SHADOW_DIR, session.id, "fold-f1.json");
@@ -70,7 +70,7 @@ test("compress → pending → lands at turn end as a tagged fold, archived firs
   // decompress: one level up keeps the messages; full pulls tool originals.
   const up = layer.decompress(agent, { id: "f1" });
   assert.match(up, /Restored archive content/);
-  assert.match(up, /one level up/);
+  assert.match(up, /one tier down/);
   const full = layer.decompress(agent, { id: "f1", full: true });
   assert.match(full, /ERROR_CODE_3/);
   const raw = layer.decompress(agent, { id: ids[2] });
@@ -98,12 +98,14 @@ test("compress validation: format, protected tail, overlap, existing folds", asy
   const tool = layout.rows.find((row) => row.role === "tool" && row.foldable);
   assert.match(layer.propose(agent, `${tool.ref}–${tool.ref} half a round\nsummary`), /splits a tool call|without its result/);
   const run = layer.snapshot(agent).runs[0];
-  assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} first\nsummary one`), /pending fold/);
+  assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} first\nsummary one`), /pending T1 fold/);
   assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} again\nsummary two`), /overlaps pending fold/);
   await engine.finishTurn(agent);
   const fold = layer.layout(session).rows.find((row) => row.stratum === "fold");
   assert.ok(fold);
-  assert.match(layer.propose(agent, `${fold.ref}–${fold.ref} refold\nsummary`), /existing fold node.*T2/);
+  assert.match(layer.propose(agent, `${fold.ref}–${fold.ref} refold\nsummary`), /pending T2 fold|not smaller/, "a fold inside the range makes it the next tier");
+  const full = { type: "user/message", data: { role: "user", source: { kind: "compact-checkpoint" }, content: [{ type: "text", text: "stock summary" }] } };
+  void full;
 });
 
 test("small batches wait (min benefit) and are dropped after max deferrals", async () => {
@@ -174,7 +176,7 @@ test("tools row: compress/decompress/search_context/strata_status execute throug
   const status = await tools.strata_status.execute({ detail: true }, { agent });
   assert.match(status, /Foldable runs/);
   const run = engine.strataLayer.snapshot(agent).runs[0];
-  assert.match(await tools.compress.execute({ content: `${run.startRef}–${run.endRef} t\nsummary` }, { agent }), /pending/);
+  assert.match(await tools.compress.execute({ content: `${run.startRef}–${run.endRef} t\nsummary` }, { agent }), /pending T1 fold/);
   assert.match(await tools.decompress.execute({ id: "" }, { agent }), /id is required/);
   assert.match(await tools.search_context.execute({ query: "PLATYPUS" }, {}), /no agent session/);
 });

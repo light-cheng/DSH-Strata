@@ -11,6 +11,7 @@ import { rotateShadow, sessionDir, shadowFileBody, shadowMaxBytes } from "./shad
 import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { StrataLayer } from "./lib/l2.js";
+import { recordCard } from "./lib/archive.js";
 
 const MARK = "Strata card.";
 const SUMMARY_OPEN_TAG = "<compacted-summary>";
@@ -393,7 +394,15 @@ export default class StrataEngine extends BasicCompactionEngine {
         try {
           state.localOnly = true;
           state.approvedCard = chunk.card;
+          const cutNodes = agent.session.surface.nodes;
+          const cutSeqs = cutNodes.slice(cutNodes.indexOf(chunk.start), cutNodes.indexOf(chunk.end) + 1);
           await this.commitSelectedSpan(agent, chunk, op);
+          try {
+            recordCard(this.archiveDir(state.key), chunk.card?.archiveId, {
+              seqs: cutSeqs,
+              toolCallIds: cutSeqs.map((seq) => agent.session.eventAt(seq)?.data?.message?.toolCallId).filter(Boolean),
+            });
+          } catch {}
           const after = this.ctx.tokenMeter.measure(agent.session).totalTokens;
           reduced = after < before;
           this.ctx.logger?.info?.(`strata cut ${Date.now() - started}ms ${before} -> ${after} chunk=${chunk.tokens}`);
