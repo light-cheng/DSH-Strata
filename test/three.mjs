@@ -137,7 +137,7 @@ assert.equal(jobCardLines(settled, { startTurn: 3, endTurn: 4 }).some((line) => 
 assert.equal(jobCardLines(settled, { startTurn: 3, endTurn: 4 }).some((line) => line.includes("第 7 轮结束")), true);
 assert.equal(jobCardLines(settled, { startTurn: 8, endTurn: 9 }).length, 0);
 
-const root = join(tmpdir(), `spine-three-${Date.now()}`);
+const root = join(tmpdir(), `strata-three-${Date.now()}`);
 mkdirSync(root, { recursive: true });
 const original = `HEAD${"M".repeat(200000)}TAIL`;
 const saved = captureToolResult({

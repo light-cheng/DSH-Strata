@@ -7,8 +7,8 @@ let CompactionEngine = null;
 let ManualCompactionError = null;
 let loadError = null;
 
-if (process.env.SPINE_ENGINE_FAIL === "import") {
-  loadError = new Error("spine: engine import refused");
+if (process.env.STRATA_ENGINE_FAIL === "import") {
+  loadError = new Error("strata: engine import refused");
 } else {
   try {
     const engine = await import("./index.js");
@@ -62,7 +62,7 @@ function releaseCompaction(ctx) {
 }
 
 function visibleTakeover(ctx, reason) {
-  const line = `spine: ${MARK}。${reason}`;
+  const line = `strata: ${MARK}。${reason}`;
   console.error(line);
   ctx?.logger?.warn?.(line);
 }
@@ -74,29 +74,29 @@ const UnavailableCompaction = CompactionEngine
     constructor(ctx, reason) {
       super(ctx);
       this.reason = reason;
-      ctx.logger?.warn?.(`spine: ${MARK}。压缩没有装上，这一刀没有执行。${reason}`);
+      ctx.logger?.warn?.(`strata: ${MARK}。压缩没有装上，这一刀没有执行。${reason}`);
     }
 
     compactIfNeeded() {
-      return Promise.reject(new Error(`spine: ${MARK}。压缩没有装上，这一刀没有执行。${this.reason}`));
+      return Promise.reject(new Error(`strata: ${MARK}。压缩没有装上，这一刀没有执行。${this.reason}`));
     }
 
     compactNow() {
-      const message = `spine: ${MARK}。压缩没有装上，这一刀没有执行。${this.reason}`;
+      const message = `strata: ${MARK}。压缩没有装上，这一刀没有执行。${this.reason}`;
       if (ManualCompactionError) return Promise.reject(new ManualCompactionError("summary", message));
       return Promise.reject(new Error(message));
     }
   }
   : null;
 
-export default class LiveCompactEntry {
+export default class StrataEntry {
   static inject = ["llm", "tokenMeter", "sessions"];
   static Config = Stock?.Config || Engine?.Config;
 
   constructor(ctx, config) {
     let cause = loadError;
-    let skipStock = process.env.SPINE_ENGINE_FAIL === "construct";
-    if (skipStock) cause = new Error("spine: constructor refused");
+    let skipStock = process.env.STRATA_ENGINE_FAIL === "construct";
+    if (skipStock) cause = new Error("strata: constructor refused");
     if (!loadError && !skipStock) {
       try {
         preflightConfig(config);
@@ -114,8 +114,8 @@ export default class LiveCompactEntry {
         skipStock = true;
       }
     }
-    cause ??= new Error("spine: engine missing");
-    if (!skipStock && process.env.SPINE_STOCK_FAIL !== "1" && Stock) {
+    cause ??= new Error("strata: engine missing");
+    if (!skipStock && process.env.STRATA_STOCK_FAIL !== "1" && Stock) {
       try {
         visibleTakeover(ctx, `这一轮用原版压缩。${reasonText(cause)}`);
         return new Stock(ctx, config);
@@ -125,7 +125,7 @@ export default class LiveCompactEntry {
       }
     }
     visibleTakeover(ctx, reasonText(cause));
-    if (!UnavailableCompaction) throw new Error(`spine: ${MARK}。压缩接口没有装上。${reasonText(cause)}`);
+    if (!UnavailableCompaction) throw new Error(`strata: ${MARK}。压缩接口没有装上。${reasonText(cause)}`);
     return new UnavailableCompaction(ctx, reasonText(cause));
   }
 }

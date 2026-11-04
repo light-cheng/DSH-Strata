@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listPluginShadows, rotateShadow, shadowFileBody, shadowMaxBytes } from "../shadow.js";
 
-const root = join(tmpdir(), `spine-shadow-${Date.now()}`);
+const root = join(tmpdir(), `strata-shadow-${Date.now()}`);
 mkdirSync(root, { recursive: true });
 
 function plant(name, session, bytes, mtimeMs) {
@@ -93,7 +93,7 @@ const oversizeBlocked = rotateShadow({
 assert.equal(oversizeBlocked.ok, false);
 assert.equal(oversizeBlocked.failed, true);
 assert.equal(oversizeBlocked.oversize, true);
-assert.equal(shadowMaxBytes({ SPINE_SHADOW_MAX_BYTES: "128" }), 128);
+assert.equal(shadowMaxBytes({ STRATA_SHADOW_MAX_BYTES: "128" }), 128);
 assert.equal(shadowMaxBytes({}), 128 * 1024 * 1024);
 
 rmSync(root, { recursive: true, force: true });

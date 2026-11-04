@@ -53,7 +53,7 @@ const index = readFileSync(new URL("../index.js", import.meta.url), "utf8");
 assert.equal(index.includes("Treat the captured context as established background"), false);
 assert.equal(index.includes("Full shadowed text"), false);
 assert.equal(index.includes("slice(-24)"), false);
-assert.equal(index.includes("liveCompact"), true);
+assert.equal(index.includes("strataCut"), true);
 assert.equal(index.includes("this.backupId"), false);
 assert.equal(index.includes("this.shadowFile"), false);
 assert.equal(index.includes("freshShadowFile(\"official\", state.key)"), true);
@@ -173,7 +173,7 @@ const rewritten = rewritePresetConfig({
     },
   ],
 }, true);
-assert.equal(rewritten.plugins[1].config[0].name, "dsh-live-compact");
+assert.equal(rewritten.plugins[1].config[0].name, "@light-cheng/dsh-strata");
 assert.equal(rewritten.plugins[1].config[0].id, "compaction-basic");
 assert.equal(rewritten.plugins[1].config[0].config.thresholdRatio, 0.8);
 assert.equal(rewritten.plugins[1].config[0].config.headroomTokens, 65536);
@@ -183,7 +183,7 @@ const presetRow = rewritePresetConfig({
   id: "preset-standard",
   config: { id: "standard", plugins: [{ id: "compaction-basic", name: "@deepseek-ai/dsh-compaction-basic" }] },
 }, true);
-assert.equal(presetRow.config.plugins[0].name, "dsh-live-compact");
+assert.equal(presetRow.config.plugins[0].name, "@light-cheng/dsh-strata");
 assert.equal(rewritePresetConfig({
   id: "standard",
   plugins: [{ id: "compaction-basic", name: "@deepseek-ai/dsh-compaction-basic" }],

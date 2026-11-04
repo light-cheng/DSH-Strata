@@ -1,4 +1,4 @@
-// Next-round thunder path. Off unless SPINE_THUNDER=1.
+// Next-round thunder path. Off unless STRATA_THUNDER=1.
 // One model read only. Never try a full attach and then send less.
 
 const PROSE_TOKEN_CAP = 32000;

@@ -11,7 +11,7 @@ assert.equal(sanitizeSessionKey("../session-abc"), "session-abc");
 assert.equal(sessionDir("/tmp/shadow", "session-abc"), "/tmp/shadow/session-abc");
 assert.equal(isPluginShadowName("1793726992383-aaaaaaaa-bbbbbbbb.txt"), true);
 
-const root = join(tmpdir(), `spine-106-${Date.now()}`);
+const root = join(tmpdir(), `strata-106-${Date.now()}`);
 mkdirSync(join(root, "session-live"), { recursive: true });
 mkdirSync(join(root, "session-dead"), { recursive: true });
 writeFileSync(join(root, "session-live", "owner"), "4242");

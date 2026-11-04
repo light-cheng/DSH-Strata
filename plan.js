@@ -1,6 +1,6 @@
 import { pointerFor } from "./raw.js";
 
-const MARK = "Spine extract.";
+const MARK = "Strata card.";
 const KEEP_BUDGET = 8000;
 const TEXTUAL = new Set(["text", "input_text", "output_text"]);
 const SOURCE_ROLES = new Set(["user", "assistant", "tool"]);
@@ -40,7 +40,7 @@ export function messageText(message) {
 export function takeLocalCut(ticket) {
   if (!ticket) return { kind: "official" };
   if (ticket.card?.ok !== true || typeof ticket.card.text !== "string" || ticket.card.text.length === 0) {
-    return { kind: "refuse", reason: "spine: approved card missing; leaving the span" };
+    return { kind: "refuse", reason: "strata: approved card missing; leaving the span" };
   }
   return { kind: "local", text: ticket.card.text };
 }

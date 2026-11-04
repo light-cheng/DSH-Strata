@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
-const OURS = "dsh-live-compact";
+const OURS = "@light-cheng/dsh-strata";
 const PRESET_IDS = new Set(["standard", "ptc", "minimal", "cordis", "preset-standard", "preset-ptc", "preset-minimal", "preset-cordis"]);
-export const GATE_SERVICE = "liveCompactPresetGate";
+export const GATE_SERVICE = "strataPresetGate";
 export const PRESET_ENGINE_CONFIG = {
   auto: true,
   thresholdRatio: 0.8,
@@ -85,7 +85,7 @@ function engineEntry(node) {
   return null;
 }
 
-export default class LiveCompactGate {
+export default class StrataGate {
   constructor(ctx) {
     const seen = new Set();
     ctx.on("internal/config", function (_raw, next) {
@@ -99,9 +99,9 @@ export default class LiveCompactGate {
           const engine = engineEntry(rewritten);
           if (engine) {
             const config = engine.config || {};
-            ctx.logger?.info?.(`spine: 预设 ${id} 已换包 ${engine.name} thresholdRatio=${config.thresholdRatio} headroomTokens=${config.headroomTokens} retainTokens=${config.retainTokens} compactionRetries=${config.compactionRetries}`);
+            ctx.logger?.info?.(`strata: 预设 ${id} 已换包 ${engine.name} thresholdRatio=${config.thresholdRatio} headroomTokens=${config.headroomTokens} retainTokens=${config.retainTokens} compactionRetries=${config.compactionRetries}`);
           } else if (!loadable) {
-            ctx.logger?.warn?.(`spine: 本会话未接管预设 ${id}，仍用原版压缩。`);
+            ctx.logger?.warn?.(`strata: 本会话未接管预设 ${id}，仍用原版压缩。`);
           }
         }
         return rewritten;
