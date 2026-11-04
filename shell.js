@@ -1,6 +1,9 @@
 // Thin entry. This file must evaluate even when the engine cannot load.
 // A throw here leaves stock disabled and /compact waiting.
 
+import { conflictMessage, foreignCompactionOwner, installedConflicts } from "./lib/conflicts.js";
+import { setTakeover } from "./lib/takeover.js";
+
 let Engine = null;
 let Stock = null;
 let CompactionEngine = null;
@@ -94,10 +97,25 @@ export default class StrataEntry {
   static Config = Stock?.Config || Engine?.Config;
 
   constructor(ctx, config) {
+    // Another plugin already provides ctx.compaction: do not provide a second
+    // one (cordis would throw) and do not release theirs. Yield quietly-but-loudly.
+    const foreign = foreignCompactionOwner(ctx);
+    if (foreign) {
+      const reason = `另一个插件 <${foreign}> 已经提供压缩。 Another plugin <${foreign}> already provides compaction.`;
+      visibleTakeover(ctx, reason);
+      setTakeover("yielded", reason);
+      return /** @type {any} */ ({ strataPassive: true, reason });
+    }
     let cause = loadError;
     let skipStock = process.env.STRATA_ENGINE_FAIL === "construct";
     if (skipStock) cause = new Error("strata: constructor refused");
-    if (!loadError && !skipStock) {
+    const conflicts = installedConflicts();
+    let conflicted = false;
+    if (conflicts.length > 0 && !cause) {
+      cause = new Error(conflictMessage(conflicts));
+      conflicted = true;
+    }
+    if (!loadError && !skipStock && !conflicted) {
       try {
         preflightConfig(config);
       } catch (error) {
@@ -105,9 +123,11 @@ export default class StrataEntry {
         skipStock = true;
       }
     }
-    if (!loadError && !skipStock && Engine) {
+    if (!loadError && !skipStock && !conflicted && Engine) {
       try {
-        return new Engine(ctx, config);
+        const engine = new Engine(ctx, config);
+        setTakeover("active");
+        return engine;
       } catch (error) {
         cause = error instanceof Error ? error : new Error(String(error));
         releaseCompaction(ctx);
@@ -118,13 +138,16 @@ export default class StrataEntry {
     if (!skipStock && process.env.STRATA_STOCK_FAIL !== "1" && Stock) {
       try {
         visibleTakeover(ctx, `这一轮用原版压缩。${reasonText(cause)}`);
-        return new Stock(ctx, config);
+        const stock = new Stock(ctx, config);
+        setTakeover("stock", reasonText(cause));
+        return stock;
       } catch (error) {
         cause = error instanceof Error ? error : new Error(String(error));
         releaseCompaction(ctx);
       }
     }
     visibleTakeover(ctx, reasonText(cause));
+    setTakeover("unavailable", reasonText(cause));
     if (!UnavailableCompaction) throw new Error(`strata: ${MARK}。压缩接口没有装上。${reasonText(cause)}`);
     return new UnavailableCompaction(ctx, reasonText(cause));
   }

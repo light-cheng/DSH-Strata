@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { configConflicts, conflictMessage, installedConflicts } from "./lib/conflicts.js";
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
 const OURS = "@light-cheng/dsh-strata";
@@ -88,9 +89,21 @@ function engineEntry(node) {
 export default class StrataGate {
   constructor(ctx) {
     const seen = new Set();
+    let warned = false;
     ctx.on("internal/config", function (_raw, next) {
       const resolved = next();
       try {
+        // §6: with dsh-live-compact or billion-context present, leave presets alone.
+        if (isPreset(resolved)) {
+          const conflicts = [...installedConflicts().map((item) => item.name), ...configConflicts(resolved)];
+          if (conflicts.length > 0) {
+            if (!warned) {
+              warned = true;
+              ctx.logger?.warn?.(`strata: ${conflictMessage([...new Set(conflicts)])}`);
+            }
+            return resolved;
+          }
+        }
         const loadable = packageLoadable();
         const rewritten = rewritePresetConfig(resolved, loadable);
         const id = rewritten?.id || rewritten?.config?.id;
