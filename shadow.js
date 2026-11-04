@@ -2,7 +2,7 @@ import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync, unl
 import { join, resolve } from "node:path";
 
 const PLUGIN_NAME = /^(?:(?:cut|official|shadow)-\d+-[0-9a-f]{8}|raw-[0-9a-f]{16}|\d+-[0-9a-f]{8}-[0-9a-f]{8}|\d+-[0-9a-f]{8,16})\.txt$/;
-const SESSION_MARK = /^# spine-session (\S+)/;
+const SESSION_MARK = /^# strata-session (\S+)/;
 
 export function isPluginShadowName(name) {
   return PLUGIN_NAME.test(name);
@@ -38,13 +38,13 @@ function processAlive(pid) {
 
 export function shadowFileBody(sessionKey, body) {
   const key = String(sessionKey || "default").replace(/\s+/g, "");
-  return `# spine-session ${key}\n${body || ""}`;
+  return `# strata-session ${key}\n${body || ""}`;
 }
 
 export function shadowMaxBytes(env = process.env) {
-  const bytes = Number(env.SPINE_SHADOW_MAX_BYTES);
+  const bytes = Number(env.STRATA_SHADOW_MAX_BYTES);
   if (Number.isFinite(bytes) && bytes > 0) return Math.floor(bytes);
-  const mb = Number(env.SPINE_SHADOW_MAX_MB);
+  const mb = Number(env.STRATA_SHADOW_MAX_MB);
   if (Number.isFinite(mb) && mb > 0) return Math.floor(mb * 1024 * 1024);
   return 128 * 1024 * 1024;
 }

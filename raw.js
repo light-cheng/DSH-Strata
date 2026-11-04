@@ -145,7 +145,7 @@ export function verifiedIds(records) {
 
 export function runPruneAfterCapture(ids, captured, prune) {
   for (const id of ids || []) {
-    if (!captured?.has?.(id)) throw new Error(`spine: raw backup missing before prune: ${id}`);
+    if (!captured?.has?.(id)) throw new Error(`strata: raw backup missing before prune: ${id}`);
   }
   return prune();
 }

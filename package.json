@@ -1,0 +1,65 @@
+{
+  "name": "@light-cheng/dsh-strata",
+  "version": "0.1.0",
+  "description": "Strata Context: layered, restorable context management for DeepSeek Harness. Deterministic tail cuts, model-written folds, a local archive, and search.",
+  "license": "MIT",
+  "type": "module",
+  "main": "shell.js",
+  "exports": {
+    ".": "./shell.js",
+    "./engine": "./index.js",
+    "./gate": "./gate.js",
+    "./tools": "./tools-plugin.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "shell.js",
+    "index.js",
+    "gate.js",
+    "plan.js",
+    "raw.js",
+    "shadow.js",
+    "thunder.js",
+    "lib",
+    "tools-plugin.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test 'test/**/*.mjs'",
+    "check": "node scripts/check.mjs",
+    "eval": "node eval/run.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "compaction",
+    "context"
+  ],
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.5 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-compaction": ">=0.2.1-rc.5 <0.3.0",
+    "@deepseek-ai/dsh-compaction-basic": ">=0.2.1-rc.5 <0.3.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.5 <0.3.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-compaction": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5"
+  },
+  "dsh": {
+    "displayName": "Strata Context",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Light Cheng (https://github.com/light-cheng)"
+}
