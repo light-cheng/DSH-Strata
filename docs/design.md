@@ -281,3 +281,58 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 - **Q4** fork / 子会话：存档怎么沿着父会话查找（billion-context 有 `derivedFrom`，深度上限 8）。
 - **Q5** 用户在 Web 里回退 / 编辑历史时，待落地的 compress 和 fold 怎么处理。
 - **Q6** 评测预算：真实 DeepSeek 跑三套评测的花费和时间，要不要先只跑 headless。
+
+---
+
+## 11. 实现说明（MVP 0.1.0，2026-11-04）
+
+对照 DSH Desktop 0.2.1-rc.5（`app.asar`）和 npm 上的 `@deepseek-ai/*@0.2.1-rc.5` 核对过的接口，以及和本文前面不一致或前面没定的地方。
+
+### 11.1 接口核对
+
+| 接口 | 结论 |
+|---|---|
+| `internal/config` | ✅ 存在。`cordis-plugin-loader` 用 `fiber.ctx.waterfall(fiber, "internal/config", raw, () => raw)`，`next()` 是同步的，`gate.js` 的写法照旧可用 |
+| `surfaceOp` | ✅ `dsh-session` 只认 `"append"` 和 `{ op: "replace", startSeq, endSeq }`，替换后 `surface.replaceGeneration += 1`。fold 用的就是 replace，和 L1 卡片同一条路 |
+| `agent.runMaintenance` | ✅ 存在，原版 `compactNow` 也在里面跑。fold 落地和 L1 小切都在 live-compact 原有的 `finishTurn` 这一次维护里完成（先 L2 后 L1） |
+| 工具执行上下文 | ✅ `tool.execute(args, exec)`，`exec.agent.session` 可用 |
+| 命令 | ✅ `ctx.commands.register({ definitionId, name, description, input?, handler })`，`handler(invocation)` 拿到 `invocation.agent` 和 `rawInput` |
+| 提醒（nudge）通道 | ⚠️ 文档里没写怎么注入。实际用的是 `agent/pre-step` waterfall：在 `decision.messages` 末尾追加一条 `createUserMessage`（DSH 自己切换模型时就这样追加提示）。**只在这一步本来就有新用户消息进入时追加**，空步不加，避免改变 DSH 的步调度语义。所以单轮很长的 headless 任务，中途不会收到提醒，下一轮开始才会。来源写成 `{ kind: "strata", form: "notice" }`，这个自定义 kind 没有在持久化校验里验证过，真机要看一眼 |
+| 缓存命中 | ✅ `assistant/message` 事件的 `data.usage`：`inputTokens` 是未命中部分，`cacheReadTokens` 是命中部分 |
+| 上下文窗口 | ✅ `session.requestHeader().config.{provider,model}` + `ctx.llm.resolveModelInfo(...).context.contextWindow`；拿不到时用 `STRATA_CONTEXT_WINDOW`（默认 1M） |
+| cordis 可选依赖 | ⚠️ cordis 没有 optional inject。工具行必需 `tools` + `compaction`；`commands`、`systemPrompt` 用嵌套的 `ctx.inject([...])`，缺了也不影响工具 |
+| 两个 compaction 提供者 | ⚠️ cordis 第二次 `provide("compaction")` 会抛 `service "compaction" has been registered at <…>`。live-compact 原来的 `releaseCompaction` 在构造失败后会删掉 store 里的 compaction，**可能删掉别的插件的**。Strata 在构造前先查 store，已有别人就让出（不 provide、不删），见 §11.3 |
+| Config | ⚠️ 引擎的 `Config` 是原版的 zod schema，加字段不稳。Strata 自己的阈值全部用 `STRATA_*` 环境变量（和 live-compact 读 `SPINE_*` 一样），README 有表 |
+
+### 11.2 待定问题的处理
+
+- **Q1 引用 id**：用 DSH 事件 seq，显示成 `s00123`。**不往消息里加标签**（Q2 选「不加」）：模型通过 `strata_status` 看到可折叠区间的起止 ref（`detail:true` 列出每条），提醒消息里也带最大的三段。这样消息字节不变，不影响缓存。
+- **Q3 L1 停止线**：改成按比例 `窗口 × STRATA_L1_STOP_RATIO`（默认 0.65）。L2 没有单独的停止线，75% 以上每次有新输入都提醒、并且无视代价直接落地；再往上交给 L∞（0.8 + headroom）。
+- **Q4 fork / 子会话**：没做。存档只按当前 session id 找。
+- **Q5 回退 / 编辑**：待落地的 fold 记的是 seq 列表；落地前逐个重新校验（节点还在、顺序不变、仍是 raw/card），变了就丢弃并记日志，不会落到错的位置。L1 这一刀如果和待落地的 fold 重叠，这一轮不切。
+- **T2**：范围里有 fold 或 full 节点就拒绝，提示 T2 不在 MVP。
+
+### 11.3 接管检测
+
+- 构造时：别的插件已经提供 `ctx.compaction` → **让出**（返回一个不注册服务的空对象，日志警告）；`dsh-live-compact` 或 `billion-context` 能从同一棵 `node_modules` 里 resolve 到 → **不接管，跑原版引擎**并警告。注意「装了但禁用」也算冲突，可用 `STRATA_IGNORE_CONFLICTS=1` 跳过。
+- `gate.js`：预设配置树里出现这两个包的启用行，或者包已安装 → 不改写预设。
+- 工具行：`ctx.compaction` 不是 Strata 引擎时不注册四个工具和系统提示，只注册 `/strata`，说明为什么没接管。
+- TUI：没有单独检测。gate 只改写 standard / ptc / minimal / cordis 四个 Web 预设，TUI 预设不动，仍跑原版。
+
+### 11.4 代价估算（§4 的具体公式）
+
+```
+cost    = (fold 起点之后的 token − 回收量) × (未命中单价 − 命中单价)    一次性
+benefit = 回收量 × 命中单价 × 预计剩余请求数
+```
+
+单价默认 1 : 0.1（`STRATA_PRICE_MISS` / `STRATA_PRICE_HIT`，只有比例有意义）。剩余请求数默认取「本会话已经发过的请求数」，夹在 [4, 200]。同一轮的多个 fold 合起来算一次；`benefit < cost` 或回收量低于 `max(5K, 窗口 1%)` 就推迟，最多推迟 3 次轮末，之后丢弃。compress 的返回里写明估算。
+
+### 11.5 和前文的其他差异
+
+- **卡片和指针里不再出现本机绝对路径**：live-compact 1.0.6 的 `pointerFor` 和 `backupHint` 还写绝对路径（README 说 1.0.3 去掉了，实际 1.0.6 代码里还在）。Strata 改成存档 id（`cut-…`、`archive:raw-….txt`），并提示用 `decompress` 取回。
+- **L∞ 摘要**：原版摘要前插一块 `[strata:full id=official-…]`，写明存档 id；存档失败也照写「没有存档成功」。
+- **`decompress toFile`** 写到会话工作目录下的 `.strata/restore/`（工作目录取最新的 `working-directory/change`，否则 session header 的 `cwd`），因为 `~/.dsh/strata` 可能在文件工具的沙箱外。
+- **`emergencyPct` 95% 截断**：§3 表里有，§7 MVP 清单没有，没做。
+- **评测**：live-compact 仓库里没有「长填日志」「失忆对比」两套的脚本，`eval/` 是按描述重写的（fill / amnesia / recall 三套，strata 和 stock 两组）。默认只打印计划，`--run` 才真跑，每组用 `eval/.work/` 下独立的 `DSH_HOME`。**本会话没有跑。**
+- 去掉了 live-compact 的 `bin/`（指向上游的下载域名）。
