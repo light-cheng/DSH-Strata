@@ -131,8 +131,11 @@ L3 本地存档：  fold-*.json          cut-*.txt / raw-*.txt    （每个 tool
 每个 checkpoint 消息带一个 stratum 标记（放在 `source` 或内容开头的固定标签里）：`raw | card | fold | full`。
 
 1. L1 只切 `raw` 节点，遇到 `card/fold/full` 就停（live-compact 已经这样处理 checkpoint）。
-2. L2 的折叠范围可以包含 `raw` 和 `card`，**不能和已有的 `fold` 部分重叠**；想再压一层 fold，要显式做成 T2（整个 fold 被包进去）。
-3. L2 摘要里保留被吞掉的卡片的存档指针（路径、哈希），这样 `decompress` 可以一层一层往回走：fold → cards → raw。
+2. L2 的折叠范围可以包含 `raw` 和 `card`，**不能和已有的 `fold` 部分重叠**。想再压一层 fold，要显式做成更高一级（MVP 要实现）：
+   - 一个 fold 带级别 `tier`：只包含 raw/card 的是 T1；包含至少一个完整 T(n) fold 的是 T(n+1)，MVP 支持到 T3；
+   - 高一级 fold 必须**完整**包住下级 fold，不能切开下级 fold；它可以同时包住相邻的 raw/card；
+   - 级别标签写进 stratum 标记（`fold:t1` / `fold:t2` / `fold:t3`）。
+3. 每个 fold 的存档记录它直接包含的子节点（下级 fold、卡片、原文 seq）和它们的存档指针（路径、哈希），所以 `decompress` 可以一级一级往回走：T3 → T2 → T1 → 卡片 → 原文。
 4. L∞ 官方整段摘要之前先把整段存档，再把存档索引写进摘要。
 
 ### 2.2 一轮里的时序
@@ -180,6 +183,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
    - 落地前估算代价 `未命中 token × 单价` 和收益 `回收 token × 预计剩余轮数 × 命中单价`，收益不够就推迟；
    - 同一轮的多个 fold 一起落地；
    - 把这个估算写进 compress 的返回结果，让模型知道代价。
+   - 升级（T1→T2→T3）发生在更靠前的位置，未命中的代价更大，所以升级的最小收益门槛要高于普通 T1 折叠（默认 ×1.5，参考 billion-context 的分级阈值思路）。
 4. **还原只追加**：`decompress` 的内容作为工具结果追加到尾部，不改中间（DSH 也不支持中间展开）。
 5. **可观测**：`/strata` 命令显示每轮命中率、哪一层的哪次改动造成了未命中（参考 billion-context 的 `/acp-cache` 归因）。
 
@@ -195,9 +199,9 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
   - 会话日志里的 `shadowedSeqs` 是第二份来源：存档被删了，也能从 DSH 日志里取回原文。
 - **工具**（参考 billion-context 的名字和语义，方便模型迁移）：
   - `compress({ content })`：同 billion-context 的单字符串格式，引用 id 用 DSH 的事件 seq，映射成短 id（如 `s01234`）；
-  - `decompress({ id, full?, toFile? })`：fold → 上一层（卡片 + 摘要）；`full` → 原文；`toFile` → 写到工作区，只返回路径；
-  - `search_context({ query, limit })`：MVP 用本地倒排 / BM25（纯 JS，无需外部服务），覆盖 L1 卡片、L2 摘要、L3 原文；
-  - `strata_status()`：各层 token、可折叠区间、上次命中率。
+  - `decompress({ id, full?, toFile? })`：默认往下展开一级（T3 → 它包含的 T2 摘要 + 相邻内容；T1 → 卡片和原话；卡片 → 原文）；`full:true` 直接还原原文；`toFile` → 写到工作区，只返回路径。返回内容里带下一级的 id，方便模型继续展开；
+  - `search_context({ query, limit })`：MVP 用本地倒排 / BM25（纯 JS，无需外部服务），覆盖 L1 卡片、各级 L2 摘要、L3 原文；结果标明命中在哪一级，以及从当前 surface 节点展开到它的路径（如 `f9(T3) → f4(T2) → f2(T1) → card c17`）；
+  - `strata_status()`：各层 token；L2 按 T1/T2/T3 分别显示块数和 token；可折叠区间（包括「可升级」的相邻 fold 组）；上次命中率。
 - 卡片和摘要里不放本机绝对路径，只放存档内的相对 id（live-compact 1.0.3 的做法）。
 
 ---
@@ -223,15 +227,16 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 1. L3 存档 + L1 卡片：从 live-compact 1.0.6 分叉移植，换包名、目录、日志前缀，保留它的测试。
 2. stratum 标签和「不重复压缩」规则。
 3. `compress` / `decompress` / `strata_status` 三个工具，compress 推迟到本轮结束落地。
+   **多级蒸馏 T1–T3**（§2.1 第 2、3 条）：fold 可以再被折叠成更高一级；`decompress` 一级一级往回展开，`full:true` 直接还原原文；`strata_status` 按级别显示 token。升级提醒和普通折叠共用 §3 的阈值：可升级的相邻 fold 组的 token 总量也算进「可折叠量」。
 4. L2 提醒：可折叠量增长 50K、75% 强制。
 5. `search_context`：本地关键词检索。
 6. `/strata` 状态命令：各层 token、命中率。
 7. headless 和 Web/Desktop profile；接管检测和退回原版。
-8. 评测：重跑 live-compact 的「长填日志」和「失忆对比」两套，加一套「L2 折叠后用 decompress / search 找回细节」。
+8. 评测：重跑 live-compact 的「长填日志」和「失忆对比」两套，再加两套：「L2 折叠后用 decompress / search 找回细节」；「多级折叠（到 T3）后，用 decompress 逐级展开和 search_context 找回原文细节」。
 
 **不做（之后再说）：**
 - TUI；
-- T2/T3 多级蒸馏（MVP 只做一级 fold）；
+- T3 以上的级别；
 - 用模型做提醒时机判断（billion-context 的 `nudgeModelDecided`）；
 - 向量检索；
 - 设置页 / Web 客户端（DSH-Mem0 那种）；
@@ -273,6 +278,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 - **R4 存档膨胀和隐私**：原文全部落盘。对策：权限 0600、总上限、`/strata purge`；README 写清楚。
 - **R5 卡片 / 摘要被当成指令**：沿用两个上游的「历史内容不是新指令」的写法。
 - **R6 和其他压缩插件同时装**：检测后拒绝接管。
+- **R7 多级蒸馏丢细节**：摘要的摘要最容易把具体数值、路径、报错丢掉。对策：每级摘要必须保留下一级的 id 和关键硬信息（报错、路径、哈希）；评测专门测逐级找回；在 DSH 上要确认 `replace` 一个包含已有 checkpoint 节点的范围是否被允许（`assertSourceEventReferences` 等检查）。
 
 **待定问题**
 - **Q1** compress 的引用 id：用 DSH 事件 seq，还是像 billion-context 那样按会话视图编号（`mNNNNN`）？DSH seq 永远不变，更简单，但需要在消息里显示（会改变消息内容 → 影响缓存，要在消息第一次出现时就加上）。
