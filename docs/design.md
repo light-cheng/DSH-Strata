@@ -387,6 +387,15 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 - 真实模型评测每次在 `eval/.work/<时间>/{strata,stock}/dsh-home` 里新建 home，并从本地 `npm pack` 装 Strata。`eval/.work/` 已加进 git 忽略，清理时直接删掉整个目录即可。
 - 模型调用都走用户本机的 magpie 网关（`127.0.0.1:3425`），用 `DEEPSEEK_BASE_URL` 加 `--patch` 指过去，没有改任何 profile 文件。
 
+2026-11-05 收尾：
+- 已删除 `dsh-home-smoke`、`dsh-home-conflict`、`.pnpm-store`，以及 `eval/.work/*` 下所有 DSH home，只留下各轮的 `results.json`。
+- 用户日常的 `desktop` profile（`~/.dsh/profiles/desktop`）：
+  - 卸载了 `billion-context` 0.1.212，用的是 `dsh plugin remove`，它同时从 `dependencies` 和 bundles 里去掉；
+  - 装上了 `@light-cheng/dsh-strata` 0.1.0，来源是 GitHub Release 的 tarball；
+  - 改动前的 `package.json`、`cordis.patch.yml`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` 备份在 `~/.dsh/profiles/desktop/.backup-before-strata-20261105/`；
+  - 用户自己的 `cordis.patch.yml` 没有改。
+- desktop profile 只能由 Electron 应用加载，CLI 不能 `--dump-config`，所以要打开 DSH Desktop，用 `/strata` 确认已经接管。
+
 ### 11.10 真实模型评测（2026-11-05，recall + tiers）
 
 **环境**
