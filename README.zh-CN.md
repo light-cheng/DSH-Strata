@@ -67,7 +67,7 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 用 Release 里的预构建包：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.0/light-cheng-dsh-strata-0.2.0.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.1/light-cheng-dsh-strata-0.2.1.tgz
 ```
 
 用本地源码：

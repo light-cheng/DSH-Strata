@@ -1,6 +1,6 @@
 {
   "name": "@light-cheng/dsh-strata",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Strata Context: layered, restorable context management for DeepSeek Harness. Deterministic tail cuts, model-written folds, a local archive, and search.",
   "license": "MIT",
   "repository": {
@@ -20,7 +20,9 @@
     "./tools": "./tools-plugin.js",
     "./package.json": "./package.json",
     "./client": "./client.js",
-    "./icon": "./assets/icon.png"
+    "./icon": "./assets/icon.png",
+    "./gate/icon": "./assets/icon.png",
+    "./tools/icon": "./assets/icon.png"
   },
   "files": [
     "shell.js",
