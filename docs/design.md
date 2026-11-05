@@ -399,7 +399,7 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 2026-11-05 补记：
 - **v0.1.1 修复。** 修复了 Web / Desktop 预设无法新建会话的问题。验证用的临时 home `/private/tmp/claude-501/dsh-home-web` 已删除。
 - **v0.2.0 浮标。** 新增输入框状态浮标，用临时 home `/private/tmp/claude-501/dsh-home-dock` 做 Web 端到端验证（走 magpie），验证后已删除。
-- **用户日常的 `desktop` profile。** 现在装的是 `@light-cheng/dsh-strata` 0.2.0，来源是 GitHub Release 的 tarball。
+- **用户日常的 `desktop` profile。** 0.2.0–0.2.2 用的是 GitHub Release 的 tarball。0.3.0 起改名为 `@lightcheng/dsh-strata` 并发布到 npm；`desktop` profile 已卸掉旧名字，从 npm 装上 `@lightcheng/dsh-strata@^0.3.0`。0.3.0 的验证用临时 home（`dsh-conf-*`、`dsh-web-030`）都已删除。
 
 ### 11.10 真实模型评测（2026-11-05，recall + tiers）
 
