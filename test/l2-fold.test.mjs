@@ -114,7 +114,10 @@ test("small batches wait (min benefit) and are dropped after max deferrals", asy
   process.env.STRATA_MIN_BENEFIT_TOKENS = "1000";
   buildConversation(session);
   const run = layer.snapshot(agent).runs[0];
-  assert.match(layer.propose(agent, `${run.startRef}–${run.endRef} build\nshort`), /below the .* minimum/);
+  const reply = layer.propose(agent, `${run.startRef}–${run.endRef} build\nshort`);
+  assert.match(reply, /below the .* minimum/);
+  assert.match(reply.split("\n")[0], /^compress deferred, NOT applied this turn/, "the first line says it is deferred");
+  assert.doesNotMatch(reply, /lands at the end of this turn/);
   const nodes = [...session.surface.nodes];
   for (let turn = 1; turn <= layer.settings.maxDeferTurns; turn += 1) {
     const result = await layer.flush(agent);

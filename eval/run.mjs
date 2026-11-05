@@ -83,6 +83,12 @@ function prepareHome(arm, tarball) {
   const env = { ...process.env, DSH_HOME: home };
   sh(DSH, ["plugin", "--profile", "headless", "add", tarball], { env });
   if (arm === "stock") env.STRATA_FAKE_CONFLICT = "eval-stock-arm";
+  // The recall/tiers suites test fold + recovery mechanics, not the landing
+  // economics: short eval sessions would otherwise defer every small fold
+  // (design §4). Override with your own env to test the defaults.
+  env.STRATA_EXPECTED_REQUESTS ??= "50";
+  env.STRATA_MIN_BENEFIT_TOKENS ??= "1000";
+  env.STRATA_MIN_BENEFIT_RATIO ??= "0";
   return { home, cwd, env };
 }
 
@@ -133,6 +139,7 @@ function metrics(run, setup) {
     requests: usage.length,
     inputTokens: hit + miss,
     hitRate: hit + miss ? Math.round((hit / (hit + miss)) * 1000) / 10 : null,
+    tools: tools.join(","),
     compress: tools.filter((name) => name === "compress").length,
     decompress: tools.filter((name) => name === "decompress").length,
     search: tools.filter((name) => name === "search_context").length,
@@ -166,8 +173,9 @@ const SUITE_RUNNERS = {
     const read = task(arm, setup, "", fixtures.recall.read);
     const id = sessionIdOf(read);
     const fold = task(arm, setup, id, fixtures.recall.fold);
+    if (RUN) fixtures.removeSources(setup.cwd, "recall");
     const ask = task(arm, setup, id, fixtures.recall.question);
-    return { metrics: metrics(ask, setup), foldCalls: metrics(fold, setup).compress, recall: score(finalText(ask), fixtures.recall.expected) };
+    return { metrics: metrics(ask, setup), foldCalls: metrics(fold, setup).compress, foldReply: finalText(fold).slice(0, 300), recall: score(finalText(ask), fixtures.recall.expected) };
   },
   tiers(arm, setup) {
     if (arm !== "strata") return { skipped: "tiers needs the Strata tools" };
@@ -181,11 +189,13 @@ const SUITE_RUNNERS = {
     }
     steps.push(task(arm, setup, id, fixtures.tiers.foldT2));
     steps.push(task(arm, setup, id, fixtures.tiers.foldT3));
+    if (RUN) fixtures.removeSources(setup.cwd, "tiers");
     const status = task(arm, setup, id, "Call strata_status and paste its 'Folds by tier' line verbatim.");
     const ask = task(arm, setup, id, fixtures.tiers.question);
     return {
       metrics: metrics(ask, setup),
       compressCalls: steps.reduce((sum, run) => sum + metrics(run, setup).compress, 0),
+      foldReplies: steps.map((run) => finalText(run).slice(0, 200)),
       tierLine: (finalText(status).match(/Folds by tier:[^\n]*/) || [""])[0],
       recall: score(finalText(ask), fixtures.tiers.expected),
     };
