@@ -1,7 +1,7 @@
 // Thin entry. This file must evaluate even when the engine cannot load.
 // A throw here leaves stock disabled and /compact waiting.
 
-import { conflictMessage, foreignCompactionOwner, installedConflicts } from "./lib/conflicts.js";
+import { conflictMessage, foreignCompactionOwner, installedConflicts, scopedCompactionKeys } from "./lib/conflicts.js";
 import { setTakeover } from "./lib/takeover.js";
 
 let Engine = null;
@@ -54,9 +54,10 @@ export function preflightConfig(config = {}) {
 function releaseCompaction(ctx) {
   const store = ctx?.reflect?.store;
   if (!store) return false;
-  const keys = [...Object.getOwnPropertySymbols(store), ...Object.keys(store)];
-  for (const key of keys) {
+  // Only this context's scope: other presets' engines live in the same store.
+  for (const key of scopedCompactionKeys(ctx)) {
     if (store[key]?.name !== "compaction") continue;
+    if (store[key]?.fiber && ctx.fiber && store[key].fiber !== ctx.fiber) continue;
     delete store[key];
     if (ctx.fiber?.store) delete ctx.fiber.store.compaction;
     return true;
