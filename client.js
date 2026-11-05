@@ -29,6 +29,7 @@ window.__ModuleLoader__.load({
       card: 'Card',
       fold: 'Fold',
       official: 'Summary',
+      stale: 'Stale context',
       error: 'Compaction failed',
       open: 'Open Strata Context',
     }
@@ -39,6 +40,7 @@ window.__ModuleLoader__.load({
       card: '切卡片',
       fold: '折叠',
       official: '官方摘要',
+      stale: '清理旧上下文',
       error: '压缩失败',
       open: '打开 Strata Context',
     }
@@ -166,6 +168,7 @@ window.__ModuleLoader__.load({
       const saved = event.reclaimed ? ` −${kTokens(event.reclaimed)}` : ''
       if (event.layer === 'L1') return `${t('card')}${saved}`
       if (event.layer === 'L2') return `${t('fold')} T${event.tier || 1}${saved}`
+      if (event.layer === 'ctx') return `${t('stale')}${saved}`
       return `${t('official')}${saved}`
     }
 
@@ -197,7 +200,7 @@ window.__ModuleLoader__.load({
               const fresh = (next.now ?? Date.now()) - latest.at < FRESH_MS
               setPlay((prev) => ({
                 key: fresh ? prev.key + 1 : prev.key,
-                mode: latest.layer === 'L1' ? 'card' : 'fold',
+                mode: latest.layer === 'L1' || latest.layer === 'ctx' ? 'card' : 'fold',
                 event: latest,
                 until: Date.now() + SHOW_MS,
               }))
