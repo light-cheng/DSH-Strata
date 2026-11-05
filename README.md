@@ -13,7 +13,7 @@ original text (L0) → tool cards (L1) → model-written folds (L2) → local ar
 - **L3 archive** — every replaced span, every tool result and every fold is saved locally first. `decompress` and `search_context` bring it back.
 - **L∞** — DSH's official summary stays as the fallback; the span is archived before it runs.
 
-Design: [`docs/design.md`](docs/design.md). Status: **0.1.0 MVP, not published**. Not yet evaluated against the real DeepSeek API (see `eval/`).
+Design: [`docs/design.md`](docs/design.md). Status: **0.1.0 MVP**. Unit tests cover all layers; a real-model evaluation (DeepSeek V4.1 Flash) of folds, three-tier distillation and archive recovery is recorded in design §11.10.
 
 ## Tools the model gets
 
@@ -34,23 +34,29 @@ Strata watches **foldable** tokens (raw + cards outside the protected tail), not
 
 `/strata` (status), `/strata detail`, `/strata search <words>`, `/strata purge` (deletes this session's archive files).
 
-## Install (local tarball)
+## Install
 
 Requires DSH `>=0.2.1-rc.5 <0.3.0` and Node `>=22`. Headless and the Web / Desktop presets are supported; the TUI preset is not.
 
+From the prebuilt release tarball:
+
 ```bash
-npm pack
+dsh plugin --profile web add https://github.com/light-cheng/dsh-strata/releases/download/v0.1.0/light-cheng-dsh-strata-0.1.0.tgz
 ```
+
+From a local checkout (`npm pack` first):
 
 ```bash
 dsh plugin --profile headless add ./light-cheng-dsh-strata-0.1.0.tgz
 ```
 
-```bash
-dsh plugin --profile web add ./light-cheng-dsh-strata-0.1.0.tgz
-```
-
 Strata **refuses to take over** when `dsh-live-compact` or `billion-context` is installed (they replace the same compaction rows); DSH's stock compaction keeps running and a warning is logged. Uninstall the other plugin first. If Strata's engine cannot load, the stock engine runs; if that also fails, `/compact` fails immediately instead of hanging.
+
+## Limits
+
+- Folds land at the **end of a turn**. Inside one very long turn, L2 cannot relieve pressure; DSH's own threshold then triggers the official summary (L∞), with the span archived first.
+- L1 cards are cut at turn end too, so a fold over a short, already-carded task reclaims little and may be deferred by the cost check. That is intended: in long sessions one fold covers many cards.
+- TUI preset is not supported; forked sessions cannot read the parent session's archive yet.
 
 ## Archive and privacy
 
