@@ -8,7 +8,7 @@ dsh-strata 牵头起草，DSH-Mem0 确认后两边各自实现。版本基线：
 |---|---|---|---|
 | 记忆摘要 | `plugin:dsh-mem0:profile` 系统提示段（`memory-lifecycle.js:174-185`） | 系统提示，surface 第 0 个节点 | 不碰，正确 |
 | 每轮召回 | `system-prompt/assemble` 结果的最后一个 context，名字 `mem0:recall`（`:194-197`） | 所有 context 合成一份 **runtime-context 快照**：`user/message`，`source = { kind: "runtime-context", form: "snapshot", sections: [...] }`，正文开头是「Current runtime context. This snapshot supersedes earlier runtime-context snapshots.」。任一段变化就**追加一份新快照**，旧的留在历史里 | `stratumOf()` 只认 `compact-checkpoint`，快照被当成普通 `raw`：照样存档（`raw-*.txt`）、切进卡片、算进可折叠量、折叠进摘要 |
-| 捕获 | `session/event` 实时收集 `source.kind === "user"` 的用户消息和最后一条 assistant 消息，`turn/end` 时入队（`:281-333`） | — | Strata 的切卡和折叠都在 `turn/end` 之后的 `agent.runMaintenance` 里；替换生成的 checkpoint 是 `source.kind = "compact-checkpoint"`，Mem0 不收 |
+| 捕获 | `session/event` 实时收集 `source.kind === "user"` 的用户消息和最后一条 assistant 消息，`turn/end` 时入队（`:288-340`） | — | Strata 的切卡和折叠都在 `turn/end` 之后的 `agent.runMaintenance` 里；替换生成的 checkpoint 是 `source.kind = "compact-checkpoint"`，Mem0 不收 |
 
 问题：每次召回内容变化都会多一份快照，默认预算下每份约 2.2K token。长会话里旧快照会堆到几十万 token，而它们已经被新快照声明作废。Strata 现在会存档、切卡、折叠它们，白占空间，还会把过时的记忆写进 L2 摘要。
 
