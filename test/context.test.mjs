@@ -131,3 +131,21 @@ test("fold landing emits strata/fold-landed for optional consumers", async () =>
   assert.equal(landed[1].sessionId, session.id);
   assert.match(landed[1].summary, /Answered questions 0-2/);
 });
+
+test("archived spans (official summary, card shadow) never carry runtime-context snapshot text", () => {
+  const { engine, session } = setup();
+  const recall = "<mem0-relevant-memories>secret recall</mem0-relevant-memories>";
+  const messages = [
+    { role: "user", content: [{ type: "text", text: "Please read the notes." }], source: { kind: "user" } },
+    { role: "user", content: [{ type: "text", text: `Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\n${recall}` }], source: { kind: "runtime-context", form: "snapshot", sections: [{ name: "mem0:recall", text: recall }] } },
+    { role: "assistant", content: [{ type: "text", text: "Done reading." }] },
+  ];
+  const file = join(process.env.STRATA_SHADOW_DIR, session.id, "official-1-deadbeef.txt");
+  engine.saveShadow(messages, true, file, session.id);
+  const text = readFileSync(file, "utf8");
+  assert.ok(!text.includes("mem0-relevant-memories"), "recall text leaked into the archive");
+  assert.ok(!text.includes("secret recall"));
+  assert.match(text, /\[strata:dropped kind=runtime-context\]/);
+  assert.match(text, /Please read the notes\./);
+  assert.match(text, /Done reading\./);
+});

@@ -10,7 +10,7 @@ import { captureToolResult, rawExcerptText, restoreToolText, runPruneAfterCaptur
 import { rotateShadow, sessionDir, shadowFileBody, shadowMaxBytes } from "./shadow.js";
 import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
-import { StrataLayer } from "./lib/l2.js";
+import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
 import { recordCard } from "./lib/archive.js";
@@ -90,8 +90,22 @@ function tightenShadow(dir) {
   } catch {}
 }
 
+// Runtime-context snapshots (Mem0 recall and other plugins' contexts) never
+// reach the archive, whatever path writes it: L1 card shadow or the span an
+// official summary replaces (docs/interop-dsh-mem0.md §1, J1).
+function isRuntimeSnapshotMessage(message) {
+  const source = message?.source || message?.message?.source;
+  return source?.kind === "runtime-context" && source?.form === "snapshot";
+}
+
+function withoutRuntimeSnapshots(messages) {
+  return (messages || []).map((message) => (isRuntimeSnapshotMessage(message)
+    ? { role: "user", content: [{ type: "text", text: DROPPED_CONTEXT_TEXT }], source: { kind: "runtime-context", form: "dropped" } }
+    : message));
+}
+
 function shadowBody(messages) {
-  return (messages || []).map((message) => shadowSections(message)).join("\n\n");
+  return withoutRuntimeSnapshots(messages).map((message) => shadowSections(message)).join("\n\n");
 }
 
 function freshShadowFile(kind, key) {
