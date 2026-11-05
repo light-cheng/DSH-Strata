@@ -133,6 +133,7 @@ npm run check
 - Originals are written to `<DSH_HOME>/strata/<session>/` (default `~/.dsh/strata/`), directories `0700`, files `0600`, 128 MB in total by default.
 - Everything stays on this machine. Strata makes no network requests and no extra model calls of its own; folds are written by the session's own model as ordinary tool calls.
 - The dock reads `GET /dsh-strata/gui/status?session=…` on DSH's own Web server, behind the same access check as every DSH route. It returns token counts and event kinds only, never message text or archive paths.
+- Superseded runtime-context snapshots (for example DSH-Mem0's recalled memories) are never archived; they are replaced by a short placeholder, so deleting a memory in Mem0 leaves no copy in Strata's archive.
 - Cards and folds carry archive ids, not absolute paths. `/strata purge` deletes the current session's archive.
 
 ## Acknowledgements
