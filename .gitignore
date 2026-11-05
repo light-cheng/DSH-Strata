@@ -3,3 +3,4 @@ node_modules/
 *.tgz
 eval/.work/
 .strata/
+assets/icon-candidates/

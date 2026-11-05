@@ -1,6 +1,6 @@
 {
   "name": "@light-cheng/dsh-strata",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strata Context: layered, restorable context management for DeepSeek Harness. Deterministic tail cuts, model-written folds, a local archive, and search.",
   "license": "MIT",
   "repository": {
@@ -32,7 +32,11 @@
     "tools-plugin.js",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "README.zh-CN.md",
+    "RELEASE.md",
+    "icon.svg",
+    "assets/icon.png"
   ],
   "scripts": {
     "test": "node --test 'test/*.mjs'",
