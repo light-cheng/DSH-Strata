@@ -29,6 +29,7 @@ original text (L0) → tool cards (L1) → model-written folds T1–T3 (L2) → 
 - **Reminders that watch the right number**: L1 keeps the total low, so Strata watches foldable tokens instead. It reminds the model when they grew by 50K, and on every step above 75 % of the window.
 - **Stock compaction stays as the fallback**: DSH's official summary still runs when L1 and L2 are not enough, with the span archived first. If Strata's engine cannot load, the stock engine runs; if that also fails, `/compact` fails immediately instead of hanging.
 - **Every Web / Desktop preset**: each agent preset (Standard, PTC, Minimal, Cordis) gets its own Strata engine with the same thresholds.
+- **Composer dock**: below the chat composer, next to dsh-mem0's memory globe, an 18px strata glyph shows context use (`Strata 4.9%`). When a layer changes the context it plays once: a grain drops into the top layer for an L1 card, or sinks through every layer for an L2 fold or the official summary, with the reclaimed tokens as the label (`Fold T1 −23.3K`). Light blue on success, red on failure, still when reduced motion is on; clicking it opens the plugin page.
 - **Status at a glance**: `strata_status` and `/strata` show tokens per layer and per tier, foldable ranges, pending folds, cache hit rate and archive size.
 
 ## How it works
@@ -66,7 +67,7 @@ Requires DSH `>=0.2.1-rc.5 <0.3.0` and Node `>=22`. The Web / Desktop presets an
 From the prebuilt release tarball:
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.1.1/light-cheng-dsh-strata-0.1.1.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.0/light-cheng-dsh-strata-0.2.0.tgz
 ```
 
 From a local checkout:
@@ -117,12 +118,13 @@ npm test
 npm run check
 ```
 
-34 unit tests cover L1 cuts, fold validation and landing, T1–T3 tiers, tier-by-tier `decompress`, search, the cost estimate, per-preset takeover and the stock fallback. `node eval/run.mjs` prints the real-model evaluation plan; `--run` executes it in isolated `DSH_HOME`s under `eval/.work/`. Results with DeepSeek V4.1 Flash are recorded in [`docs/design.md`](docs/design.md) §11.10.
+36 unit tests cover L1 cuts, fold validation and landing, T1–T3 tiers, tier-by-tier `decompress`, search, the cost estimate, per-preset takeover, the stock fallback, and the dock's activity record and status route. `node eval/run.mjs` prints the real-model evaluation plan; `--run` executes it in isolated `DSH_HOME`s under `eval/.work/`. Results with DeepSeek V4.1 Flash are recorded in [`docs/design.md`](docs/design.md) §11.10.
 
 ## Privacy and data
 
 - Originals are written to `<DSH_HOME>/strata/<session>/` (default `~/.dsh/strata/`), directories `0700`, files `0600`, 128 MB in total by default.
 - Everything stays on this machine. Strata makes no network requests and no extra model calls of its own; folds are written by the session's own model as ordinary tool calls.
+- The dock reads `GET /dsh-strata/gui/status?session=…` on DSH's own Web server, behind the same access check as every DSH route. It returns token counts and event kinds only, never message text or archive paths.
 - Cards and folds carry archive ids, not absolute paths. `/strata purge` deletes the current session's archive.
 
 ## Acknowledgements

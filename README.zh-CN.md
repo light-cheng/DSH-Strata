@@ -29,6 +29,7 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 - **提醒看的是对的数**：L1 会把总量压低，所以 Strata 看的是「可折叠 token」。可折叠内容增长 50K 时提醒模型；超过窗口 75% 后每一步都提醒。
 - **官方压缩仍然兜底**：L1、L2 都顶不住时，DSH 官方整段摘要照常运行，运行前先存档。Strata 引擎加载失败时改用原版引擎；原版也失败时，`/compact` 立刻报错，不会卡住。
 - **Web / Desktop 各预设都生效**：标准、PTC、精简、Cordis 四个 Agent 预设各有一个 Strata 引擎，阈值相同。
+- **输入框下方的状态浮标**：在聊天输入框下方、dsh-mem0 记忆地球仪旁边，有一个 18px 的地层图标，平时显示上下文占用（`Strata 4.9%`）。某一层改动上下文时播放一次动画：L1 切卡片时一粒点落进最上层；L2 折叠或官方摘要时这粒点穿过每一层沉到底部；标签显示回收的 token（`折叠 T1 −23.3K`）。成功时浅蓝，失败时红；开启「减少动态效果」时不动；点击打开插件页面。
 - **状态一眼可见**：`strata_status` 和 `/strata` 显示每一层、每一级的 token、可折叠范围、待落地的折叠、缓存命中率和存档大小。
 
 ## 工作方式
@@ -66,7 +67,7 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 用 Release 里的预构建包：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.1.1/light-cheng-dsh-strata-0.1.1.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.0/light-cheng-dsh-strata-0.2.0.tgz
 ```
 
 用本地源码：
@@ -117,12 +118,13 @@ npm test
 npm run check
 ```
 
-34 个单元测试覆盖 L1 切卡、折叠的校验与落地、T1–T3 分级、逐级 `decompress`、检索、代价估算、各预设分别接管，以及回退到原版引擎。`node eval/run.mjs` 打印真实模型评测计划，加 `--run` 会在 `eval/.work/` 下的独立 `DSH_HOME` 里执行。DeepSeek V4.1 Flash 的结果记录在 [`docs/design.md`](docs/design.md) §11.10。
+36 个单元测试覆盖 L1 切卡、折叠的校验与落地、T1–T3 分级、逐级 `decompress`、检索、代价估算、各预设分别接管、回退到原版引擎，以及浮标的活动记录和状态接口。`node eval/run.mjs` 打印真实模型评测计划，加 `--run` 会在 `eval/.work/` 下的独立 `DSH_HOME` 里执行。DeepSeek V4.1 Flash 的结果记录在 [`docs/design.md`](docs/design.md) §11.10。
 
 ## 隐私与数据
 
 - 原文写在 `<DSH_HOME>/strata/<会话>/`（默认 `~/.dsh/strata/`），目录权限 `0700`，文件 `0600`，默认总量上限 128 MB。
 - 所有内容都留在本机。Strata 自己不发网络请求，也不额外调用模型；折叠摘要由会话里的模型通过普通工具调用写出。
+- 浮标读取的是 DSH 自己 Web 服务上的 `GET /dsh-strata/gui/status?session=…`，经过和其他 DSH 接口相同的访问校验；只返回 token 数和事件类型，不含消息原文和存档路径。
 - 卡片和折叠里只放存档 id，不放绝对路径。`/strata purge` 删除当前会话的存档。
 
 ## 致谢
