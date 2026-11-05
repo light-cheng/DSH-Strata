@@ -14,6 +14,7 @@ import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
 import { recordCard } from "./lib/archive.js";
+import { scheduleScrub } from "./lib/scrub.js";
 
 const MARK = "Strata card.";
 const SUMMARY_OPEN_TAG = "<compacted-summary>";
@@ -275,6 +276,8 @@ export default class StrataEngine extends BasicCompactionEngine {
     super(ctx, config);
     if (process.env.STRATA_ENGINE_FAIL === "after-super") throw new Error("strata: after super");
     this.strataLayer = new StrataLayer(this);
+    // Archives written by 0.3.0 next to dsh-mem0 may hold recall blocks; scrub them once.
+    scheduleScrub(shadowDirectory(), ctx.logger);
     try {
       const pendingCuts = new Set();
       ctx.effect(() => async () => {
