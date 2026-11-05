@@ -4,6 +4,12 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### v0.2.1 — component icons
+
+- The `strata-gate` and `strata-tools` components now show the Strata icon on the plugin page too (`exports["./gate/icon"]`, `exports["./tools/icon"]`). DSH reads a subpath component's icon only from `<specifier>/icon`.
+
+Verification: 36 unit tests pass; the three icon specifiers resolve from an installed copy.
+
 ### v0.2.0 — composer dock
 
 - New composer dock, next to dsh-mem0's memory globe below the chat composer: an 18px strata glyph in the family's black / white / grey, showing context use (`Strata 4.9%`). When a layer changes the context it plays once — a grain drops into the top layer for an L1 card, or sinks through every layer for an L2 fold or the official summary — and the label shows the reclaimed tokens (`Fold T1 −23.3K`). Light blue on success, red on failure, still when reduced motion is on; clicking it opens the plugin page.
@@ -34,6 +40,12 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### v0.2.1 — 组件图标
+
+- 插件页面里 `strata-gate` 和 `strata-tools` 两个组件现在也显示 Strata 图标（`exports["./gate/icon"]`、`exports["./tools/icon"]`）。DSH 对子路径组件只从 `<specifier>/icon` 读图标。
+
+验证：36 个单元测试通过；在安装后的副本里三个图标路径都能解析。
 
 ### v0.2.0 — 输入框状态浮标
 
