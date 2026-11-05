@@ -99,3 +99,26 @@ test("dock client: events landing between two polls play the most significant on
   assert.equal(pickEvent([{ layer: "L1", reclaimed: 10, at: 5 }, { layer: "L∞", reclaimed: 1, at: 6 }], 0).layer, "L∞");
   assert.equal(pickEvent([{ layer: "L1", reclaimed: 10, at: 5 }, { layer: "L1", reclaimed: 900, at: 6 }], 0).reclaimed, 900);
 });
+
+test("strataBudget trace: off by default, one JSON line per allowance call when STRATA_BUDGET_TRACE is set", async () => {
+  const { mkdtempSync, readFileSync, existsSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createBudget } = await import("../lib/budget.js");
+  const { readSettings } = await import("../lib/settings.js");
+  const dir = mkdtempSync(join(tmpdir(), "strata-trace-"));
+  const file = join(dir, "budget.jsonl");
+  const budget = createBudget({ tokenMeter: { measure: () => ({ totalTokens: 70000 }) } }, { ...readSettings({}), contextWindow: 100000 });
+  delete process.env.STRATA_BUDGET_TRACE;
+  budget.allowance({ id: "s1" }, "mem0:recall", 2200);
+  assert.equal(existsSync(file), false);
+  process.env.STRATA_BUDGET_TRACE = file;
+  try {
+    assert.equal(budget.allowance({ id: "s1" }, "mem0:recall", 2200), 1100);
+    const line = JSON.parse(readFileSync(file, "utf8").trim());
+    assert.deepEqual({ session: line.session, name: line.name, wanted: line.wanted, allowance: line.allowance, stage: line.stage, ratio: line.ratio }, { session: "s1", name: "mem0:recall", wanted: 2200, allowance: 1100, stage: "tight", ratio: 0.7 });
+  } finally {
+    delete process.env.STRATA_BUDGET_TRACE;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

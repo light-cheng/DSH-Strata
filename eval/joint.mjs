@@ -30,7 +30,7 @@ const DSH = process.env.DSH_BIN || "dsh";
 const BASE_PATCH = process.env.DSH_EVAL_PATCH ? readFileSync(resolve(process.env.DSH_EVAL_PATCH), "utf8") : "";
 const PORT = Number(process.env.MOCK_MEM0_PORT || 18891);
 const USER = "dsh-mem0-test-user";
-const RUNS = (process.env.JOINT_RUNS || "both,mem0,fold,sweep,small").split(",");
+const RUNS = (process.env.JOINT_RUNS || "both,mem0,fold,sweep,small,small-mem0").split(",");
 // Strata economics tuned so a short session's fold / stale sweep pays off; the
 // defaults (min benefit max(5K, 1% of 1M), 8K stale) never trigger in 6 turns.
 const PAYS = { STRATA_MIN_BENEFIT_TOKENS: "500", STRATA_MIN_BENEFIT_RATIO: "0.0001", STRATA_EXPECTED_REQUESTS: "200" };
@@ -92,7 +92,8 @@ const budgetPatch = `
 const budgetMem0 = `    memoryBudgetTokens: 2200
     captureStrataFolds: true
 `;
-RUN_ENV.budget = { ...PAYS, STRATA_CONTEXT_WINDOW: "40000", STRATA_KEEP_ROUNDS: "40" };
+const BUDGET_TRACE = join(work, "budget-trace.jsonl");
+RUN_ENV.budget = { ...PAYS, STRATA_CONTEXT_WINDOW: "40000", STRATA_KEEP_ROUNDS: "40", STRATA_BUDGET_TRACE: BUDGET_TRACE };
 const BUDGET_TURNS = [
   "Read notes/n0.txt, notes/n1.txt and notes/n2.txt in full with the read tool and tell me line 5 of each. Which package manager do I use for notes like these?",
   "Call compress on the range of your previous turn (the three note reads) with a one-line summary, then read notes/n3.txt in full and tell me line 7. What tea do I like while reading notes?",
@@ -114,6 +115,19 @@ async function seedLongMemories() {
     await mock("/memories", "POST", { user_id: USER, agent_id: "dsh", messages: [{ role: "user", content }], metadata: { source: "dsh", seed: true } });
   }
 }
+
+// J4 under L∞: the same small window with Mem0 only, so DSH's stock engine
+// (compaction-basic) runs the official summary with the same thresholds.
+const smallStockPatch = `
+- id: llm-deepseek
+  config:
+    defaultContextWindow: 60000
+    maxTokens: 8192
+- id: compaction-basic
+  config:
+    thresholdRatio: 0.5
+    headroomTokens: 4096
+`;
 
 function home(name, packages, extraPatch = "", extraEnv = {}, mem0Extra = "") {
   const dir = join(work, name);
@@ -245,10 +259,97 @@ function recallVsPressure(events, window) {
     if (e.type === "user/message" && e.data?.source?.kind === "runtime-context") {
       const text = (e.data.content || []).map((b) => b.text || "").join("\n");
       const block = (text.match(/<mem0-relevant-memories>[\s\S]*?<\/mem0-relevant-memories>/) || [""])[0];
-      rows.push({ seq: e.seq, turn: turnNo, pressurePct: Math.round((lastTokens / window) * 1000) / 10, recallChars: block.length, recallTokensApprox: Math.round(block.length / 3.6), memories: (block.match(/\n- /g) || []).length });
+      rows.push({ seq: e.seq, turn: turnNo, pressurePct: Math.round((lastTokens / window) * 1000) / 10, pressureAtPct: 0, recallChars: block.length, recallTokensApprox: Math.round(block.length / 3.6) });
     }
   }
+  // Context size at the request that carried each snapshot.
+  for (const row of rows) {
+    const next = events.find((e) => e.seq > row.seq && e.type === "assistant/message" && (usageOf(e).input + usageOf(e).read) > 0);
+    if (next) row.pressureAtPct = Math.round(((usageOf(next).input + usageOf(next).read) / window) * 1000) / 10;
+  }
   return rows;
+}
+
+// J4: every model request with its cache hit/miss, tagged by the last prefix
+// change before it (official summary, a Strata layer, or nothing).
+function usageOf(e) {
+  const u = JSON.stringify(e.data || {});
+  return { input: Number((u.match(/"inputTokens":(\d+)/) || [])[1] || 0), read: Number((u.match(/"cacheReadTokens":(\d+)/) || [])[1] || 0) };
+}
+function cacheTimeline(events) {
+  const requests = [];
+  let pending = "";
+  for (const e of events) {
+    if (e.type === "compaction/summary") {
+      const model = String(e.data?.model || "");
+      pending = /^strata-/.test(model) ? model : e.data?.provider === "local" ? model || "local" : "official";
+    }
+    if (e.type === "assistant/message") {
+      const { input, read } = usageOf(e);
+      if (!input && !read) continue;
+      requests.push({ seq: e.seq, input, read, after: pending || "steady" });
+      pending = "";
+    }
+  }
+  const group = (pick) => {
+    const rows = requests.filter(pick);
+    const hit = rows.reduce((sum, r) => sum + r.read, 0);
+    const miss = rows.reduce((sum, r) => sum + r.input, 0);
+    return { requests: rows.length, hit, miss, rate: hit + miss ? Math.round((hit / (hit + miss)) * 1000) / 10 : null };
+  };
+  return {
+    all: group(() => true),
+    steady: group((r) => r.after === "steady"),
+    afterOfficial: group((r) => r.after === "official"),
+    afterStrata: group((r) => /^strata-/.test(r.after)),
+    officialSummaries: requests.filter((r) => r.after === "official").length,
+    rows: requests.map((r) => `${r.seq}:${r.after === "steady" ? "" : r.after + " "}${r.read}/${r.input}`),
+  };
+}
+
+// J5 verdict per tier. Stage from the request that carried the snapshot
+// (input + cache read over the window); expected recall: normal = baseline,
+// tight ≤ half of the normal baseline, critical ≤ 512 tokens. Token counts are
+// chars / 3.6, so bounds get 10% slack.
+// J5 from Strata's own view: each recall snapshot paired with the last
+// strataBudget allowance call for mem0:recall before it (STRATA_BUDGET_TRACE).
+function tracedTiers(events, traceFile) {
+  if (!existsSync(traceFile)) return null;
+  const calls = readFileSync(traceFile, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((c) => c.name === "mem0:recall");
+  const expected = (stage, wanted) => (stage === "critical" ? Math.min(wanted, 512) : stage === "tight" ? Math.floor(wanted / 2) : wanted);
+  const rows = [];
+  for (const e of events) {
+    if (!(e.type === "user/message" && e.data?.source?.kind === "runtime-context")) continue;
+    const call = calls.filter((c) => c.at <= e.time).at(-1);
+    if (!call) continue;
+    const text = (e.data.content || []).map((b) => b.text || "").join("\n");
+    const block = (text.match(/<mem0-relevant-memories>[\s\S]*?<\/mem0-relevant-memories>/) || [""])[0];
+    const tokens = Math.round(block.length / 3.6);
+    rows.push({ seq: e.seq, pct: Math.round(call.ratio * 1000) / 10, stage: call.stage, allowance: call.allowance, ruleOk: call.allowance === expected(call.stage, call.wanted), recallChars: block.length, recallTokensApprox: tokens, fits: tokens <= Math.ceil(call.allowance * 1.1) });
+  }
+  const tier = (stage) => {
+    const sample = rows.filter((r) => r.stage === stage && r.recallChars > 0);
+    return { samples: sample.map((r) => `${r.pct}%: allowance ${r.allowance}, recall ~${r.recallTokensApprox} tok (${r.recallChars} ch)`), pass: sample.length > 0 && sample.every((r) => r.ruleOk && r.fits) };
+  };
+  return { calls: calls.length, normal: tier("normal"), tight: tier("tight"), critical: tier("critical"), rows };
+}
+
+function budgetTiers(rows) {
+  const tier = (pct) => (pct >= 75 ? "critical" : pct >= 65 ? "tight" : "normal");
+  const withBlock = rows.filter((r) => r.pressureAtPct > 0 && r.recallChars > 0);
+  const normal = withBlock.filter((r) => tier(r.pressureAtPct) === "normal").map((r) => r.recallTokensApprox);
+  const baseline = normal.length ? Math.max(...normal) : 0;
+  const verdict = (name, limit) => {
+    const sample = withBlock.filter((r) => tier(r.pressureAtPct) === name);
+    const worst = sample.length ? Math.max(...sample.map((r) => r.recallTokensApprox)) : null;
+    return { samples: sample.map((r) => `${r.pressureAtPct}%→${r.recallTokensApprox}`), worst, limit, pass: sample.length > 0 && worst <= limit };
+  };
+  return {
+    baselineNormal: baseline,
+    normal: { ...verdict("normal", Math.round(2200 * 1.1)) },
+    tight: verdict("tight", Math.round((baseline / 2) * 1.1)),
+    critical: verdict("critical", Math.round(512 * 1.1)),
+  };
 }
 
 const MODEL = (BASE_PATCH.match(/model:\s*["']?([^\s"']+)/) || [])[1] || "(from profile)";
@@ -272,8 +373,10 @@ await new Promise((r) => setTimeout(r, 800));
 try {
   for (const name of RUNS) {
     await mock("/__reset", "POST");
-    const packages = name === "mem0" ? [mem0Tgz] : [strataTgz, mem0Tgz];
-    const h = home(name, packages, name === "small" ? smallPatch : name === "budget" ? budgetPatch : "", RUN_ENV[name] || {}, name === "budget" ? budgetMem0 : "");
+    const mem0Only = name === "mem0" || name === "small-mem0";
+    const packages = mem0Only ? [mem0Tgz] : [strataTgz, mem0Tgz];
+    const extraPatch = name === "small" ? smallPatch : name === "small-mem0" ? smallStockPatch : name === "budget" ? budgetPatch : "";
+    const h = home(name, packages, extraPatch, RUN_ENV[name] || {}, name === "budget" ? budgetMem0 : "");
     if (name === "budget") await seedLongMemories();
     const seededPosts = name === "budget" ? await memoryPosts() : 0;
     const turns = [];
@@ -289,11 +392,11 @@ try {
       turns.push(turn(h, QUESTIONS[4]));
     } else if (name === "budget") {
       for (const q of BUDGET_TURNS) turns.push(turn(h, q));
-    } else if (name === "small") {
+    } else if (name === "small" || name === "small-mem0") {
       turns.push(turn(h, "Remember that the project codename is HALCYON. Reply OK."));
       turns.push(turn(h, "Read every file notes/n0.txt through notes/n23.txt in full with the read tool, one per step, then tell me line 77 of notes/n23.txt and remind me of the project codename."));
     }
-    const status = name === "mem0" || name === "budget" ? null : turn(h, "Call strata_status and paste its 'Runtime context:' line and its first line verbatim. Nothing else.");
+    const status = mem0Only || name === "budget" ? null : turn(h, "Call strata_status and paste its 'Runtime context:' line and its first line verbatim. Nothing else.");
     const files = archiveFiles(h);
     // A recall block, not Mem0's system-prompt guidance that names the tag.
     const leaked = files.filter((file) => /<mem0-relevant-memories>\s*\n|Relevant long-term memories for this user/.test(readFileSync(file, "utf8")));
@@ -303,8 +406,12 @@ try {
     const snapshots = events.filter((e) => e.type === "user/message" && e.data?.source?.kind === "runtime-context");
     await new Promise((r) => setTimeout(r, 2000));
     const captures = ((await mock("/__captures")).captures || []).map((c) => c.body || c);
-    const capturedUser = captures.flatMap((c) => (c.messages || []).filter((m) => m.role === "user").map((m) => String(m.content).trim()));
-    const capturedAssistant = captures.flatMap((c) => (c.messages || []).filter((m) => m.role === "assistant").map((m) => String(m.content).trim()));
+    // Auto-capture (turn end) carries session_id and no via; mem0_add tool
+    // calls by the model and fold captures are counted separately.
+    const autoCaptures = captures.filter((c) => c.metadata?.session_id && !c.metadata?.via);
+    const toolCaptures = captures.filter((c) => !c.metadata?.session_id);
+    const capturedUser = autoCaptures.flatMap((c) => (c.messages || []).filter((m) => m.role === "user").map((m) => String(m.content).trim()));
+    const capturedAssistant = autoCaptures.flatMap((c) => (c.messages || []).filter((m) => m.role === "assistant").map((m) => String(m.content).trim()));
     const finals = [...turns, ...(status ? [status] : [])].map((t) => t.final.trim()).filter(Boolean);
     results[name] = {
       exits: turns.map((t) => t.status),
@@ -322,6 +429,8 @@ try {
       archiveFilesWithRecallText: leaked.map((file) => file.split("/strata/")[1]),
       archiveFilesWithProfile: profileInArchive,
       captures: captures.length,
+      autoCaptures: autoCaptures.length,
+      toolCaptures: toolCaptures.map((c) => ({ infer: c.infer, metadata: c.metadata, text: String(c.messages?.[0]?.content || "").slice(0, 160) })),
       userCapturedNotVerbatim: capturedUser.filter((text) => !userOriginals.includes(text)).map((t) => t.slice(0, 120)),
       userCapturedVerbatim: capturedUser.filter((text) => userOriginals.includes(text)).length + "/" + capturedUser.length,
       assistantCapturedIsAFinalReply: capturedAssistant.filter((text) => finals.some((f) => f.startsWith(text.slice(0, 200)) || text.startsWith(f.slice(0, 200)))).length + "/" + capturedAssistant.length,
@@ -341,6 +450,9 @@ try {
       capturesDetail: captures.map((c) => ({ infer: c.infer, metadata: c.metadata, messages: (c.messages || []).map((m) => ({ role: m.role, content: String(m.content).slice(0, 300) })) })),
       finals: finals.map((f) => f.slice(0, 300)),
       recallVsPressure: name === "budget" ? recallVsPressure(events, 40000) : undefined,
+      budgetTiers: name === "budget" ? budgetTiers(recallVsPressure(events, 40000)) : undefined,
+      budgetTraced: name === "budget" ? tracedTiers(events, BUDGET_TRACE) : undefined,
+      cacheTimeline: cacheTimeline(events),
       foldCaptures: captures.filter((c) => c.metadata?.via === "dsh-strata").map((c) => ({ metadata: c.metadata, infer: c.infer, hasAbsolutePath: /\/(Users|home|private|tmp)\//.test(JSON.stringify(c)), text: String(c.messages?.[0]?.content || "").slice(0, 200) })),
       seededPosts: seededPosts || undefined,
       budgetStatusReply: name === "budget" ? turns.at(-1)?.final.slice(0, 400) : undefined,
