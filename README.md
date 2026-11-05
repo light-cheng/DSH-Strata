@@ -134,7 +134,8 @@ npm run check
 - Everything stays on this machine. Strata makes no network requests and no extra model calls of its own; folds are written by the session's own model as ordinary tool calls.
 - The dock reads `GET /dsh-strata/gui/status?session=…` on DSH's own Web server, behind the same access check as every DSH route. It returns token counts and event kinds only, never message text or archive paths.
 - Superseded runtime-context snapshots (for example DSH-Mem0's recalled memories) are never archived; they are replaced by a short placeholder, so deleting a memory in Mem0 leaves no copy in Strata's archive.
-- Archives written by 0.3.0 next to DSH-Mem0 may still hold recalled memories. On the first start after upgrading, Strata scrubs them once: every runtime-context snapshot and `<mem0-relevant-memories>` block in existing archive files becomes the same placeholder, everything else stays as it was, and a `.scrub-runtime-context-v1` marker in the archive root keeps it from running again.
+- System prompts are never archived; they are rebuilt on every request, and a one-line `[system prompt omitted]` marks their place, so the archive keeps no copy of, for example, DSH-Mem0's profile.
+- Archives written by 0.3.0 next to DSH-Mem0 may still hold recalled memories or the Mem0 profile. On the first start after upgrading, Strata scrubs them once: runtime-context snapshots and `<mem0-relevant-memories>` blocks become the placeholder, `<mem0-user-profile>` blocks and system-prompt sections of official-summary archives are replaced too, everything else stays as it was, and a `.scrub-runtime-context-v2` marker in the archive root keeps it from running again.
 - Cards and folds carry archive ids, not absolute paths. `/strata purge` deletes the current session's archive.
 
 ## Acknowledgements

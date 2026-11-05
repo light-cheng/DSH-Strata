@@ -105,8 +105,16 @@ function withoutRuntimeSnapshots(messages) {
     : message));
 }
 
+export const SYSTEM_OMITTED = "[system prompt omitted]";
+
+// The system prompt is regenerated on every request, so an archive copy only
+// duplicates things like dsh-mem0's <mem0-user-profile> on disk.
+function isSystemMessage(message) {
+  return (message?.role ?? message?.message?.role) === "system";
+}
+
 function shadowBody(messages) {
-  return withoutRuntimeSnapshots(messages).map((message) => shadowSections(message)).join("\n\n");
+  return withoutRuntimeSnapshots(messages).map((message) => (isSystemMessage(message) ? SYSTEM_OMITTED : shadowSections(message))).join("\n\n");
 }
 
 function freshShadowFile(kind, key) {
@@ -574,7 +582,17 @@ export default class StrataEngine extends BasicCompactionEngine {
     state.liveAgent = agent;
     state.localOnly = false;
     this.ensurePruneGuard();
-    const result = await super.compactIfNeeded(agent, trigger, signal);
+    let result;
+    try {
+      result = await super.compactIfNeeded(agent, trigger, signal);
+      if (trigger === "pressure") this.pressureConfigError = null;
+    } catch (error) {
+      // Stock throws TargetPressureConfigError (it carries targetKey) when the
+      // window cannot hold maxTokens + headroom; it then warns once and never
+      // compacts. Keep it so strata_status can say so.
+      if (error && typeof error.targetKey === "string") this.pressureConfigError = { targetKey: error.targetKey, message: String(error.message || "") };
+      throw error;
+    }
     if (result) {
       this.strataLayer?.recordChange(agent, { layer: "L∞", id: "official", start: result.shadowedRange?.start ?? 0, tokensFromStart: 0, reclaimed: result.shadowedTokenCount || 0 });
     }

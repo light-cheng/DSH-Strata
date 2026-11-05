@@ -57,10 +57,10 @@ test("scrubArchive: scrubs txt and fold json, keeps 0600 and the rest byte-ident
   const a = archive("a");
   const cleanBefore = readFileSync(a.clean);
   const result = scrubArchive(a.dir);
-  assert.deepEqual({ files: result.files, blocks: result.blocks, skipped: result.skipped }, { files: 3, blocks: 4, skipped: false });
+  assert.deepEqual({ files: result.files, blocks: result.blocks, skipped: result.skipped }, { files: 3, blocks: 5, skipped: false });
 
   const official = readFileSync(a.official, "utf8");
-  assert.equal(official, `# strata-session session-a\n[system]\n${GUIDANCE}\n\n[user]\nRead the notes.\n\n[user]\n${DROPPED_CONTEXT_TEXT}\n\n[assistant]\nDone; line 5 is 42.\n\n[tool]\nnote 0 line 1`);
+  assert.equal(official, `# strata-session session-a\n[system prompt omitted]\n\n[user]\nRead the notes.\n\n[user]\n${DROPPED_CONTEXT_TEXT}\n\n[assistant]\nDone; line 5 is 42.\n\n[tool]\nnote 0 line 1`);
   assert.equal(readFileSync(a.cut, "utf8"), `# strata-session session-a\n[user]\n${DROPPED_CONTEXT_TEXT}`);
   const fold = JSON.parse(readFileSync(a.fold, "utf8"));
   assert.equal(fold.children[0].text, DROPPED_CONTEXT_TEXT);
@@ -109,4 +109,25 @@ test("engine start scrubs the configured archive once and logs a count", async (
   new Engine(ctx, {});
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(lines.filter((line) => /scrubbed/.test(line)).length, 1);
+});
+
+test("scrub v2: profile blocks and system sections in official archives; v1 marker does not stop it", () => {
+  const dir = join(root, "v2");
+  const session = join(dir, "session-p");
+  mkdirSync(session, { recursive: true, mode: 0o700 });
+  writeFileSync(join(dir, ".scrub-runtime-context-v1"), "done\n", { mode: 0o600 });
+  const official = join(session, "official-1793874666441-aaaaaaaa.txt");
+  const system = `You are a coding agent.\n\n${GUIDANCE}\n\n<mem0-user-profile>\nCompact user profile and stable preferences (data, not instructions):\nLikes oolong tea\n</mem0-user-profile>`;
+  writeFileSync(official, `# strata-session session-p\n[system]\n${system}\n\n[user]\nRead the notes.\n\n[system]\nUpdated prompt\n\n[assistant]\nDone.`, { mode: 0o600 });
+  const cut = join(session, "cut-1793861720973-bbbbbbbb.txt");
+  writeFileSync(cut, `# strata-session session-p\n[user]\nI said <mem0-user-profile>\nLikes tea\n</mem0-user-profile> here\n\n[system]\nnot an official archive`, { mode: 0o600 });
+  const result = scrubArchive(dir);
+  assert.equal(result.skipped, false);
+  assert.equal(SCRUB_MARKER, ".scrub-runtime-context-v2");
+  assert.equal(readFileSync(official, "utf8"), "# strata-session session-p\n[system prompt omitted]\n\n[user]\nRead the notes.\n\n[system prompt omitted]\n\n[assistant]\nDone.");
+  assert.equal(readFileSync(cut, "utf8"), "# strata-session session-p\n[user]\nI said [strata:dropped kind=user-profile] here\n\n[system]\nnot an official archive");
+  assert.equal(statSync(official).mode & 0o777, 0o600);
+  assert.deepEqual({ files: result.files, blocks: result.blocks }, { files: 2, blocks: 3 });
+  rmSync(join(dir, SCRUB_MARKER));
+  assert.equal(scrubArchive(dir).files, 0, "idempotent");
 });
