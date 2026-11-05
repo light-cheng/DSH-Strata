@@ -149,3 +149,34 @@ test("archived spans (official summary, card shadow) never carry runtime-context
   assert.match(text, /Please read the notes\./);
   assert.match(text, /Done reading\./);
 });
+
+test("archived spans omit system prompts (regenerated per request) with a one-line marker", () => {
+  const { engine, session } = setup();
+  const messages = [
+    { role: "system", content: [{ type: "text", text: "You are a coding agent.\n<mem0-user-profile>\nLikes oolong tea\n</mem0-user-profile>" }] },
+    { role: "user", content: [{ type: "text", text: "Please read the notes." }], source: { kind: "user" } },
+    { role: "system", content: "In-history prompt update with <mem0-user-profile>x</mem0-user-profile>" },
+  ];
+  const file = join(process.env.STRATA_SHADOW_DIR, session.id, "official-2-deadbeef.txt");
+  engine.saveShadow(messages, true, file, session.id);
+  const text = readFileSync(file, "utf8");
+  assert.ok(!text.includes("mem0-user-profile"));
+  assert.ok(!text.includes("coding agent"));
+  assert.equal(text.match(/\[system prompt omitted\]/g)?.length, 2);
+  assert.match(text, /\[user\]\nPlease read the notes\./);
+});
+
+test("strata_status warns when DSH's automatic compaction is off because maxTokens leaves no budget", async () => {
+  const ctx = fakeContext({ contextWindow: 60000 });
+  const engine = new Engine(ctx, { headroomTokens: 4096 });
+  const session = new FakeSession({ id: `s-cfg-${Math.random().toString(16).slice(2)}`, cwd: join(root, "work") });
+  session.route = { provider: "deepseek-official", model: "workbuddy/deepseek-v4.1-flash", maxTokens: 256000 };
+  addUser(session, "hello");
+  const agent = fakeAgent(session);
+  await assert.rejects(engine.compactIfNeeded(agent, "pressure", new AbortController().signal));
+  const status = engine.strataLayer.status(agent);
+  assert.match(status, /^Warning: DSH's automatic compaction is off for deepseek-official\/workbuddy\/deepseek-v4\.1-flash: .*no message budget/m);
+  session.route = { ...session.route, maxTokens: 8192 };
+  await engine.compactIfNeeded(agent, "pressure", new AbortController().signal);
+  assert.doesNotMatch(engine.strataLayer.status(agent), /^Warning: DSH's automatic compaction/m, "cleared once a pressure check succeeds");
+});

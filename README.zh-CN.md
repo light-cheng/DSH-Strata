@@ -134,7 +134,8 @@ npm run check
 - 所有内容都留在本机。Strata 自己不发网络请求，也不额外调用模型；折叠摘要由会话里的模型通过普通工具调用写出。
 - 浮标读取的是 DSH 自己 Web 服务上的 `GET /dsh-strata/gui/status?session=…`，经过和其他 DSH 接口相同的访问校验；只返回 token 数和事件类型，不含消息原文和存档路径。
 - 过期的运行时上下文快照（比如 DSH-Mem0 召回的记忆）不会存档，只换成一行很短的占位，所以在 Mem0 里删掉的记忆不会在 Strata 存档里留副本。
-- 0.3.0 和 DSH-Mem0 一起用时写下的存档里可能还留着召回的记忆。升级后第一次启动时，Strata 会清理一次：已有存档文件里的每份运行时上下文快照和 `<mem0-relevant-memories>` 块都换成同样的占位，其他内容不变；存档根目录里的 `.scrub-runtime-context-v1` 标记保证只执行一次。
+- 系统提示词从不存档：它每次请求都会重新生成，原位置只留一行 `[system prompt omitted]`，所以存档里不会有 DSH-Mem0 画像之类内容的副本。
+- 0.3.0 和 DSH-Mem0 一起用时写下的存档里可能还留着召回的记忆或 Mem0 画像。升级后第一次启动时，Strata 会清理一次：运行时上下文快照和 `<mem0-relevant-memories>` 块换成占位，`<mem0-user-profile>` 块和官方摘要存档里的系统提示词段落也一并替换，其他内容不变；存档根目录里的 `.scrub-runtime-context-v2` 标记保证只执行一次。
 - 卡片和折叠里只放存档 id，不放绝对路径。`/strata purge` 删除当前会话的存档。
 
 ## 致谢
