@@ -180,3 +180,34 @@ test("strata_status warns when DSH's automatic compaction is off because maxToke
   await engine.compactIfNeeded(agent, "pressure", new AbortController().signal);
   assert.doesNotMatch(engine.strataLayer.status(agent), /^Warning: DSH's automatic compaction/m, "cleared once a pressure check succeeds");
 });
+
+test("strata_status warns when DSH's official summary keeps failing (summary cap from a small headroomTokens)", async () => {
+  const ctx = fakeContext({ contextWindow: 40000 });
+  const engine = new Engine(ctx, { thresholdRatio: 0.95, headroomTokens: 1024 });
+  const session = new FakeSession({ id: `s-cap-${Math.random().toString(16).slice(2)}`, cwd: join(root, "work") });
+  session.route = { provider: "deepseek-official", model: "workbuddy/deepseek-v4.1-flash", maxTokens: 4096 };
+  for (let turn = 1; turn <= 8; turn += 1) {
+    addUser(session, `turn ${turn}`);
+    for (let i = 0; i < 3; i += 1) addToolRound(session, { output: filler(`t${turn}i${i}`, 10000), turn });
+  }
+  const agent = fakeAgent(session);
+  let regions = 0;
+  engine.compactRegion = async () => {
+    regions += 1;
+    throw new Error("summarization truncated at the token cap (incomplete checkpoint)");
+  };
+  await assert.rejects(engine.compactIfNeeded(agent, "pressure", new AbortController().signal), /token cap/);
+  await assert.rejects(engine.compactIfNeeded(agent, "pressure", new AbortController().signal), /token cap/);
+  assert.equal(regions, 2, "stock reached the summary for a 60K context against a 34.9K threshold");
+  const status = engine.strataLayer.status(agent);
+  assert.match(status, /^Warning: DSH's official summary \(L∞\) failed 2 time\(s\) in a row: summarization truncated at the token cap .*summary cap 1024 tokens; compaction maxTokens defaults to headroomTokens/m);
+  assert.doesNotMatch(status, /automatic compaction is off/);
+  session.route = { ...session.route, maxTokens: 4096 };
+  const quiet = new Engine(fakeContext({ contextWindow: 40000 }), { thresholdRatio: 0.95, headroomTokens: 1024 });
+  const small = new FakeSession({ id: `s-ok-${Math.random().toString(16).slice(2)}`, cwd: join(root, "work") });
+  small.route = session.route;
+  addUser(small, "hello");
+  quiet.officialFailure = { message: "summarization truncated at the token cap", count: 3, summaryCap: 1024 };
+  assert.equal(await quiet.compactIfNeeded(fakeAgent(small), "pressure", new AbortController().signal), null);
+  assert.doesNotMatch(quiet.strataLayer.status(fakeAgent(small)), /official summary/, "cleared after a pressure check that did not fail");
+});
