@@ -73,7 +73,7 @@ dsh plugin --profile desktop add @lightcheng/dsh-strata
 From a GitHub release tarball (no npm):
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.3.0/lightcheng-dsh-strata-0.3.0.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.0/lightcheng-dsh-strata-0.4.0.tgz
 ```
 
 From a local checkout:
