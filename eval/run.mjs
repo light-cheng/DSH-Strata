@@ -46,6 +46,9 @@ const RUN = flag("run");
 const SUITES = option("suite", "all") === "all" ? ["fill", "amnesia", "recall", "tiers"] : option("suite", "all").split(",");
 const ARMS = option("arms", "strata,stock").split(",");
 const DSH = process.env.DSH_BIN || "dsh";
+// Optional extra patch layer (e.g. route the model through a local gateway).
+// Launcher flags must come before app flags such as --json.
+const PATCH = process.env.DSH_EVAL_PATCH ? ["--patch", resolve(process.env.DSH_EVAL_PATCH)] : [];
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const work = join(here, ".work", stamp);
 
@@ -64,7 +67,9 @@ function pack() {
   console.log("Pack the plugin:");
   const out = sh("npm", ["pack", "--pack-destination", work, "--json"], { cwd: repo });
   if (!RUN) return join(work, "light-cheng-dsh-strata-<version>.tgz");
-  return join(work, JSON.parse(out.stdout)[0].filename);
+  const packed = JSON.parse(out.stdout);
+  // npm ≤11 prints an array; npm 12 prints an object keyed by package name.
+  return join(work, (Array.isArray(packed) ? packed : Object.values(packed))[0].filename);
 }
 
 function prepareHome(arm, tarball) {
@@ -83,7 +88,7 @@ function prepareHome(arm, tarball) {
 
 /** Run one headless task with --json and collect the event stream. */
 function task(arm, setup, sessionId, prompt) {
-  const commandArgs = ["--profile", "headless", "--json"];
+  const commandArgs = ["--profile", "headless", ...PATCH, "--json"];
   if (sessionId) commandArgs.push("--session-id", sessionId);
   commandArgs.push(prompt);
   const started = Date.now();
@@ -116,7 +121,7 @@ function metrics(run, setup) {
   const usage = run.events.map((event) => event.data?.usage || event.usage).filter(Boolean);
   const hit = usage.reduce((sum, item) => sum + (item.cacheReadTokens || 0), 0);
   const miss = usage.reduce((sum, item) => sum + (item.inputTokens || 0), 0);
-  const tools = run.events.filter((event) => event.type === "tool/call" || event.data?.type === "tool/call").map((event) => event.data?.name || event.name);
+  const tools = run.events.filter((event) => event.type === "tool_call").map((event) => event.tool);
   let archive = { cuts: 0, folds: 0, official: 0 };
   if (RUN && existsSync(join(setup.home, "strata"))) {
     const count = (re) => Number(spawnSync("sh", ["-c", `ls -1R "${join(setup.home, "strata")}" | grep -cE '${re}' || true`], { encoding: "utf8" }).stdout.trim() || 0);
