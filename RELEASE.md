@@ -4,6 +4,14 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### Unreleased
+
+- **Runtime-context snapshots** (for example DSH-Mem0's recalled memories): only the newest stays on the surface; superseded ones are never archived, carded or folded, and are replaced by a `[strata:dropped kind=runtime-context]` placeholder at turn end (free when the prefix already broke, otherwise when it pays, always above 75%). See `docs/interop-dsh-mem0.md`.
+- **`strataBudget` service** (pressure / allowance / countTokens) for context plugins, and a `strata/fold-landed` event.
+- **Archive privacy fix:** the span an official summary replaces (`official-*.txt`) and card backups no longer keep runtime-context snapshots; they are written as the placeholder.
+- **One-time archive scrub:** on the first start after upgrading, Strata walks `<DSH_HOME>/strata/` once and replaces runtime-context snapshots and `<mem0-relevant-memories>` blocks left in existing archive files by 0.3.0 with the same placeholder. Other text stays byte-identical, files stay `0600`, and a marker file (`.scrub-runtime-context-v1`) keeps it from running again; the log line says how many blocks were scrubbed. To remove a session's archive entirely, use `/strata purge`.
+- **Composer dock:** when a fold, a card and a cleanup land in the same turn end, the dock now plays the fold instead of whichever came last.
+
 ### v0.3.0 — published on npm as `@lightcheng/dsh-strata`
 
 - The package is renamed from `@light-cheng/dsh-strata` (GitHub releases only) to **`@lightcheng/dsh-strata`** and published on npm: `dsh plugin --profile desktop add @lightcheng/dsh-strata`.
@@ -58,6 +66,14 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### 未发布
+
+- **运行时上下文快照**（比如 DSH-Mem0 召回的记忆）：surface 上只保留最新一份；更早的不存档、不切卡、不折叠，轮末换成 `[strata:dropped kind=runtime-context]` 占位（前缀已断时顺带清理，否则划算时清理，超过 75% 时直接清理）。见 `docs/interop-dsh-mem0.md`。
+- 为上下文插件提供 **`strataBudget` 服务**（pressure / allowance / countTokens），并发出 `strata/fold-landed` 事件。
+- **存档隐私修复：** 官方摘要替换掉的片段（`official-*.txt`）和卡片备份里不再保留运行时上下文快照，写进去的是占位。
+- **一次性存档清理：** 升级后第一次启动时，Strata 把 `<DSH_HOME>/strata/` 走一遍，把 0.3.0 留在已有存档文件里的运行时上下文快照和 `<mem0-relevant-memories>` 块换成同样的占位。其他内容逐字节不变，文件权限保持 `0600`；写下标记文件（`.scrub-runtime-context-v1`）后不再重复执行，日志里记下清理了多少块。要整个删掉某个会话的存档，用 `/strata purge`。
+- **输入框浮标：** 同一次轮末同时落地折叠、卡片和清理时，浮标播放折叠动画，而不是最后到达的那一个。
 
 ### v0.3.0 — 以 `@lightcheng/dsh-strata` 发布到 npm
 
