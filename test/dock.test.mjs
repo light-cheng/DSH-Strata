@@ -78,3 +78,24 @@ test("strataBudget: stages follow the L1 stop line and the force line; summaries
   assert.equal(broken.allowance({ id: "nobody" }, "mem0:recall", 900), 900);
   assert.equal(broken.countTokens("abcd"), 1);
 });
+
+test("dock client: events landing between two polls play the most significant one, not the last", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { runInNewContext } = await import("node:vm");
+  let mod;
+  const window = { __ModuleLoader__: { load: ({ factory }) => { mod = factory(() => ({ createElement() {}, useEffect() {}, useLayoutEffect() {}, useRef() {}, useState() {} })); } } };
+  runInNewContext(readFileSync(new URL("../client.js", import.meta.url), "utf8"), { window });
+  const { pickEvent } = mod.__test;
+  // One turn-end maintenance: fold f1, then an L1 card, then a stale sweep.
+  const events = [
+    { layer: "L1", reclaimed: 3500, at: 100 },
+    { layer: "L2", tier: 1, reclaimed: 8409, at: 210 },
+    { layer: "L1", reclaimed: 3734, at: 220 },
+    { layer: "ctx", reclaimed: 481, at: 230 },
+  ];
+  assert.equal(pickEvent(events, 150).layer, "L2", "fold beats the card and the sweep that followed it");
+  assert.equal(pickEvent(events, 150).at, 230, "the play mark still advances to the newest event");
+  assert.equal(pickEvent(events, 230), null, "nothing new");
+  assert.equal(pickEvent([{ layer: "L1", reclaimed: 10, at: 5 }, { layer: "L∞", reclaimed: 1, at: 6 }], 0).layer, "L∞");
+  assert.equal(pickEvent([{ layer: "L1", reclaimed: 10, at: 5 }, { layer: "L1", reclaimed: 900, at: 6 }], 0).reclaimed, 900);
+});
