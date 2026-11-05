@@ -19,6 +19,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,7 +30,11 @@ const DSH = process.env.DSH_BIN || "dsh";
 const BASE_PATCH = process.env.DSH_EVAL_PATCH ? readFileSync(resolve(process.env.DSH_EVAL_PATCH), "utf8") : "";
 const PORT = Number(process.env.MOCK_MEM0_PORT || 18891);
 const USER = "dsh-mem0-test-user";
-const RUNS = (process.env.JOINT_RUNS || "both,mem0,fold,small").split(",");
+const RUNS = (process.env.JOINT_RUNS || "both,mem0,fold,sweep,small").split(",");
+// Strata economics tuned so a short session's fold / stale sweep pays off; the
+// defaults (min benefit max(5K, 1% of 1M), 8K stale) never trigger in 6 turns.
+const PAYS = { STRATA_MIN_BENEFIT_TOKENS: "500", STRATA_MIN_BENEFIT_RATIO: "0.0001", STRATA_EXPECTED_REQUESTS: "200" };
+const RUN_ENV = { fold: PAYS, sweep: { ...PAYS, STRATA_STALE_SWEEP_TOKENS: "1000" } };
 const work = join(here, ".work", `joint-${new Date().toISOString().replace(/[:.]/g, "-")}`);
 mkdirSync(work, { recursive: true });
 
@@ -45,38 +50,82 @@ function pack(dir) {
   return join(work, (Array.isArray(parsed) ? parsed : Object.values(parsed))[0].filename);
 }
 
-const mem0Patch = `
+const mem0Patch = (topK = 4) => `
 - id: dsh-mem0
   config:
     backend: server
     baseUrl: http://127.0.0.1:${PORT}
     authType: none
     userId: ${USER}
-    recallTopK: 4
+    recallTopK: ${topK}
     translateMemories: false
     hygieneEnabled: false
 `;
+// Each request reserves the adapter's maxTokens (256K default) of output; stock
+// pressure compaction needs window − maxTokens − headroom > 0, otherwise it
+// warns once per target and never compacts (run 2 hit this on a 60K window).
+// The cap lives on llm-deepseek, not agent-default-model.
 const smallPatch = `
 - id: llm-deepseek
   config:
     defaultContextWindow: 60000
+    maxTokens: 8192
 - id: compaction-strata
   config:
     thresholdRatio: 0.5
     headroomTokens: 4096
 `;
 
-function home(name, packages, extraPatch = "") {
+// J5 (budget tiers): 40K window, stock L∞ only near the hard edge (~87%), L1
+// keeps many rounds so pressure climbs through 65% and 75%, and Mem0 recalls
+// up to 20 long memories so the block can fill its 2.2K budget.
+const budgetPatch = `
+- id: llm-deepseek
+  config:
+    defaultContextWindow: 40000
+    maxTokens: 4096
+- id: compaction-strata
+  config:
+    thresholdRatio: 0.95
+    headroomTokens: 1024
+`;
+const budgetMem0 = `    memoryBudgetTokens: 2200
+    captureStrataFolds: true
+`;
+RUN_ENV.budget = { ...PAYS, STRATA_CONTEXT_WINDOW: "40000", STRATA_KEEP_ROUNDS: "40" };
+const BUDGET_TURNS = [
+  "Read notes/n0.txt, notes/n1.txt and notes/n2.txt in full with the read tool and tell me line 5 of each. Which package manager do I use for notes like these?",
+  "Call compress on the range of your previous turn (the three note reads) with a one-line summary, then read notes/n3.txt in full and tell me line 7. What tea do I like while reading notes?",
+  "Read notes/n4.txt, notes/n5.txt and notes/n6.txt in full and tell me line 9 of each. Which time zone do I read notes in?",
+  "Read notes/n7.txt, notes/n8.txt and notes/n9.txt in full and tell me line 11 of each. Where does my local Qdrant for notes run?",
+  "Read notes/n10.txt, notes/n11.txt and notes/n12.txt in full and tell me line 13 of each. In which languages do I write release notes?",
+  "Read notes/n13.txt, notes/n14.txt and notes/n15.txt in full and tell me line 15 of each. How do I authenticate npm publishing of notes?",
+  "Read notes/n16.txt, notes/n17.txt and notes/n18.txt in full and tell me line 17 of each. Which notes tooling do I prefer?",
+  "Call mem0_status and paste its recall budget line verbatim, then call strata_status and paste its first line verbatim.",
+];
+
+// Long seed memories that share words with the questions, so recall fills
+// the budget instead of returning a few one-liners.
+async function seedLongMemories() {
+  const topics = ["package manager pnpm Node notes", "oolong tea reading notes", "time zone UTC+8 notes", "local Qdrant notes 6333", "release notes languages English Chinese", "npm publishing passkey notes", "notes tooling preference read files"];
+  for (let i = 0; i < 24; i += 1) {
+    const topic = topics[i % topics.length];
+    const content = `Long memory ${i} about ${topic}: ` + Array.from({ length: 12 }, (_, j) => `detail ${j} of ${topic} for the notes folder`).join("; ");
+    await mock("/memories", "POST", { user_id: USER, agent_id: "dsh", messages: [{ role: "user", content }], metadata: { source: "dsh", seed: true } });
+  }
+}
+
+function home(name, packages, extraPatch = "", extraEnv = {}, mem0Extra = "") {
   const dir = join(work, name);
   const cwd = join(dir, "ws");
   mkdirSync(cwd, { recursive: true });
-  const env = { ...process.env, DSH_HOME: join(dir, "home") };
+  const env = { ...process.env, ...extraEnv, DSH_HOME: join(dir, "home") };
   for (const pkg of packages) {
     const added = sh(DSH, ["plugin", "--profile", "headless", "add", pkg], { env });
     if (added.status !== 0) throw new Error(`install ${pkg} failed: ${added.stderr.slice(-400)}`);
   }
   const patch = join(dir, "patch.yml");
-  writeFileSync(patch, `${BASE_PATCH}\n${mem0Patch}\n${extraPatch}`);
+  writeFileSync(patch, `${BASE_PATCH}\n${mem0Patch(mem0Extra ? 20 : 4)}${mem0Extra}\n${extraPatch}`);
   // A few small files so each turn makes a tool call.
   mkdirSync(join(cwd, "notes"), { recursive: true });
   for (let i = 0; i < 24; i += 1) writeFileSync(join(cwd, "notes", `n${i}.txt`), Array.from({ length: 160 }, (_, j) => `note ${i} line ${j} value=${(i * 7919 + j * 104729) % 1000003}`).join("\n"));
@@ -98,7 +147,7 @@ function turn(h, prompt) {
   h.sessionId ||= events.find((event) => event.sessionId)?.sessionId || "";
   const usage = events.map((event) => event.usage).filter(Boolean);
   const final = events.filter((event) => event.type === "final").at(-1)?.text || "";
-  return { status: result.status, usage, final, stderr: result.stderr, tools: events.filter((event) => event.type === "tool_call").map((event) => event.tool) };
+  return { status: result.status, usage, final, warnings: [...(result.stderr.match(/[^\n]*(compaction failed|strata:|reading 'prepare')[^\n]*/g) || []).slice(0, 5), ...(result.status ? [result.stderr.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300)] : [])], stderr: result.stderr, tools: events.filter((event) => event.type === "tool_call").map((event) => event.tool) };
 }
 
 function hitRate(turns) {
@@ -129,10 +178,80 @@ function sessionEvents(h) {
   return sh("zstd", ["-dc", found]).stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
 
-async function mock(path, method = "GET") {
-  const response = await fetch(`http://127.0.0.1:${PORT}${path}`, { method });
-  return response.json();
+// Plain http with a fresh socket per call: fetch's keep-alive socket outlives
+// the mock's 5 s idle timeout during a long turn and the next call dies with
+// ECONNRESET.
+function mock(path, method = "GET", body) {
+  return new Promise((resolveBody, reject) => {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const headers = payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {};
+    const req = request({ host: "127.0.0.1", port: PORT, path, method, agent: false, headers }, (res) => {
+      let raw = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => (raw += chunk));
+      res.on("end", () => {
+        try {
+          resolveBody(JSON.parse(raw));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.end(payload);
+  });
 }
+
+// Mem0 captures asynchronously after turn/end; headless may exit first. Count
+// POST /memories after each turn so a lost capture shows up per turn.
+async function memoryPosts() {
+  const { log } = await mock("/__log");
+  return log.filter((line) => line === "POST /memories").length;
+}
+
+// Surface view of runtime-context snapshots: which are still raw, which a
+// strata-dropped-context stub replaced, which an L1 card / L2 fold covered.
+function snapshotSurface(events) {
+  const snapshots = events.filter((e) => e.type === "user/message" && e.data?.source?.kind === "runtime-context").map((e) => e.seq);
+  const by = new Map();
+  for (const e of events.filter((x) => x.type === "compaction/summary")) {
+    for (const seq of e.data?.shadowedSeqs || []) by.set(seq, e.data?.model || e.data?.provider || "?");
+  }
+  const raw = snapshots.filter((seq) => !by.has(seq));
+  return {
+    seqs: snapshots,
+    raw,
+    newestIsRaw: snapshots.length > 0 && raw.includes(snapshots.at(-1)),
+    dropped: snapshots.filter((seq) => /dropped/.test(by.get(seq) || "")),
+    coveredByCardOrFold: snapshots.filter((seq) => by.has(seq) && !/dropped/.test(by.get(seq))).map((seq) => `${seq}:${by.get(seq)}`),
+    breaks: events.filter((x) => x.type === "compaction/summary" && !/dropped/.test(x.data?.model || "")).map((x) => `${x.data?.model}@${x.data?.shadowedRange?.start}`),
+  };
+}
+
+// J5: per runtime-context snapshot, the recall block size next to the context
+// pressure of the request just before it (input + cache read over the window).
+function recallVsPressure(events, window) {
+  let lastTokens = 0;
+  let turnNo = 0;
+  const rows = [];
+  for (const e of events) {
+    if (e.type === "turn/start") turnNo = e.data?.turn;
+    if (e.type === "assistant/message") {
+      const u = JSON.stringify(e.data || {});
+      const input = Number((u.match(/"inputTokens":(\d+)/) || [])[1] || 0);
+      const read = Number((u.match(/"cacheReadTokens":(\d+)/) || [])[1] || 0);
+      if (input + read) lastTokens = input + read;
+    }
+    if (e.type === "user/message" && e.data?.source?.kind === "runtime-context") {
+      const text = (e.data.content || []).map((b) => b.text || "").join("\n");
+      const block = (text.match(/<mem0-relevant-memories>[\s\S]*?<\/mem0-relevant-memories>/) || [""])[0];
+      rows.push({ seq: e.seq, turn: turnNo, pressurePct: Math.round((lastTokens / window) * 1000) / 10, recallChars: block.length, recallTokensApprox: Math.round(block.length / 3.6), memories: (block.match(/\n- /g) || []).length });
+    }
+  }
+  return rows;
+}
+
+const MODEL = (BASE_PATCH.match(/model:\s*["']?([^\s"']+)/) || [])[1] || "(from profile)";
 
 const QUESTIONS = [
   "Which package manager and Node version do I use? Also list the notes folder with your tools.",
@@ -154,41 +273,77 @@ try {
   for (const name of RUNS) {
     await mock("/__reset", "POST");
     const packages = name === "mem0" ? [mem0Tgz] : [strataTgz, mem0Tgz];
-    const h = home(name, packages, name === "small" ? smallPatch : "");
+    const h = home(name, packages, name === "small" ? smallPatch : name === "budget" ? budgetPatch : "", RUN_ENV[name] || {}, name === "budget" ? budgetMem0 : "");
+    if (name === "budget") await seedLongMemories();
+    const seededPosts = name === "budget" ? await memoryPosts() : 0;
     const turns = [];
-    if (name === "both" || name === "mem0") {
-      for (const q of QUESTIONS) turns.push(turn(h, q));
+    if (name === "both" || name === "mem0" || name === "sweep") {
+      for (const q of QUESTIONS) {
+        turns.push(turn(h, q));
+        await new Promise((r) => setTimeout(r, 1500));
+        turns.at(-1).posts = await memoryPosts();
+      }
     } else if (name === "fold") {
       for (const q of QUESTIONS.slice(0, 4)) turns.push(turn(h, q));
       turns.push(turn(h, "Call strata_status with detail, then compress the oldest foldable range (the first two answered questions) into a one-line summary. Reply with the first line compress returned."));
       turns.push(turn(h, QUESTIONS[4]));
+    } else if (name === "budget") {
+      for (const q of BUDGET_TURNS) turns.push(turn(h, q));
     } else if (name === "small") {
       turns.push(turn(h, "Remember that the project codename is HALCYON. Reply OK."));
       turns.push(turn(h, "Read every file notes/n0.txt through notes/n23.txt in full with the read tool, one per step, then tell me line 77 of notes/n23.txt and remind me of the project codename."));
     }
-    const status = name === "mem0" ? null : turn(h, "Call strata_status and paste its 'Runtime context:' line and its first line verbatim. Nothing else.");
+    const status = name === "mem0" || name === "budget" ? null : turn(h, "Call strata_status and paste its 'Runtime context:' line and its first line verbatim. Nothing else.");
     const files = archiveFiles(h);
-    const leaked = files.filter((file) => readFileSync(file, "utf8").includes("<mem0-relevant-memories>"));
+    // A recall block, not Mem0's system-prompt guidance that names the tag.
+    const leaked = files.filter((file) => /<mem0-relevant-memories>\s*\n|Relevant long-term memories for this user/.test(readFileSync(file, "utf8")));
+    const profileInArchive = files.filter((file) => readFileSync(file, "utf8").includes("<mem0-user-profile>")).length;
     const events = sessionEvents(h);
     const userOriginals = events.filter((e) => e.type === "user/message" && e.data?.source?.kind === "user").map((e) => (e.data.content || []).map((b) => b.text || "").join("\n").trim());
     const snapshots = events.filter((e) => e.type === "user/message" && e.data?.source?.kind === "runtime-context");
-    const captures = (await mock("/__captures")).captures || [];
+    await new Promise((r) => setTimeout(r, 2000));
+    const captures = ((await mock("/__captures")).captures || []).map((c) => c.body || c);
     const capturedUser = captures.flatMap((c) => (c.messages || []).filter((m) => m.role === "user").map((m) => String(m.content).trim()));
     const capturedAssistant = captures.flatMap((c) => (c.messages || []).filter((m) => m.role === "assistant").map((m) => String(m.content).trim()));
-    const finals = turns.map((t) => t.final.trim()).filter(Boolean);
+    const finals = [...turns, ...(status ? [status] : [])].map((t) => t.final.trim()).filter(Boolean);
     results[name] = {
       exits: turns.map((t) => t.status),
+      warnings: [...new Set(turns.flatMap((t) => t.warnings))],
+      peakRequestTokens: Math.max(0, ...turns.flatMap((t) => t.usage).map((u) => (u.inputTokens || 0) + (u.cacheReadTokens || 0))),
       cache: hitRate(turns),
+      model: MODEL,
+      postsAfterEachTurn: turns.map((t) => t.posts).filter((n) => n !== undefined),
       snapshotsAppended: snapshots.length,
+      snapshotSurface: snapshotSurface(events),
       snapshotsWithRecall: snapshots.filter((e) => JSON.stringify(e.data.source.sections || []).includes("mem0:recall")).length,
       runtimeLine: status ? (status.final.match(/Runtime context:[^\n]*/) || [""])[0] : "",
-      statusFirstLine: status ? status.final.split("\n")[0].slice(0, 160) : "",
+      statusFirstLine: status ? (status.final.split("\n").find((line) => line.trim() && !line.startsWith("```")) || "").slice(0, 160) : "",
       archiveFiles: files.length,
       archiveFilesWithRecallText: leaked.map((file) => file.split("/strata/")[1]),
+      archiveFilesWithProfile: profileInArchive,
       captures: captures.length,
+      userCapturedNotVerbatim: capturedUser.filter((text) => !userOriginals.includes(text)).map((t) => t.slice(0, 120)),
       userCapturedVerbatim: capturedUser.filter((text) => userOriginals.includes(text)).length + "/" + capturedUser.length,
       assistantCapturedIsAFinalReply: capturedAssistant.filter((text) => finals.some((f) => f.startsWith(text.slice(0, 200)) || text.startsWith(f.slice(0, 200)))).length + "/" + capturedAssistant.length,
       officialSummaries: events.filter((e) => e.type === "compaction/summary" && !/^strata-/.test(e.data?.model || "") && e.data?.provider !== "local").length,
+      folds: files.filter((file) => /fold-f\d+\.json$/.test(file)).map((file) => {
+        const fold = JSON.parse(readFileSync(file, "utf8"));
+        const snaps = new Set(snapshots.map((e) => e.seq));
+        return {
+          id: fold.id,
+          seqs: fold.seqs,
+          dropped: fold.dropped,
+          staleSnapshotsInRange: (fold.seqs || []).filter((seq) => snaps.has(seq)),
+          childSnapshotsWithText: (fold.children || []).filter((child) => snaps.has(child.seq) && child.text).map((child) => child.seq),
+          summaryHasRecall: /mem0-relevant-memories|Relevant long-term memories|Current runtime context/.test(`${fold.summary} ${JSON.stringify(fold.nodes || [])}`),
+        };
+      }),
+      capturesDetail: captures.map((c) => ({ infer: c.infer, metadata: c.metadata, messages: (c.messages || []).map((m) => ({ role: m.role, content: String(m.content).slice(0, 300) })) })),
+      finals: finals.map((f) => f.slice(0, 300)),
+      recallVsPressure: name === "budget" ? recallVsPressure(events, 40000) : undefined,
+      foldCaptures: captures.filter((c) => c.metadata?.via === "dsh-strata").map((c) => ({ metadata: c.metadata, infer: c.infer, hasAbsolutePath: /\/(Users|home|private|tmp)\//.test(JSON.stringify(c)), text: String(c.messages?.[0]?.content || "").slice(0, 200) })),
+      seededPosts: seededPosts || undefined,
+      budgetStatusReply: name === "budget" ? turns.at(-1)?.final.slice(0, 400) : undefined,
       foldTurnReply: name === "fold" ? turns[4]?.final.slice(0, 200) : undefined,
       sessionId: h.sessionId,
     };
