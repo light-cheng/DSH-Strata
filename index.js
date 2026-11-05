@@ -586,11 +586,19 @@ export default class StrataEngine extends BasicCompactionEngine {
     try {
       result = await super.compactIfNeeded(agent, trigger, signal);
       if (trigger === "pressure") this.pressureConfigError = null;
+      this.officialFailure = null;
     } catch (error) {
       // Stock throws TargetPressureConfigError (it carries targetKey) when the
       // window cannot hold maxTokens + headroom; it then warns once and never
       // compacts. Keep it so strata_status can say so.
       if (error && typeof error.targetKey === "string") this.pressureConfigError = { targetKey: error.targetKey, message: String(error.message || "") };
+      // Any other failure (e.g. the summary hit its token cap, which defaults
+      // to headroomTokens) repeats at every step while context keeps growing;
+      // stock only logs it. Count consecutive failures for strata_status.
+      else if (!signal?.aborted) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.officialFailure = { message, count: (this.officialFailure?.count || 0) + 1, summaryCap: this.config?.maxTokens };
+      }
       throw error;
     }
     if (result) {

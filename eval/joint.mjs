@@ -76,7 +76,8 @@ const smallPatch = `
     headroomTokens: 4096
 `;
 
-// J5 (budget tiers): 40K window, stock L∞ only near the hard edge (~87%), L1
+// J5 (budget tiers): summary cap maxTokens 8192 (it defaults to headroomTokens;
+// 1024 truncated every official summary, so L∞ never landed). 40K window, stock L∞ only near the hard edge (~87%), L1
 // keeps many rounds so pressure climbs through 65% and 75%, and Mem0 recalls
 // up to 20 long memories so the block can fill its 2.2K budget.
 const budgetPatch = `
@@ -88,6 +89,7 @@ const budgetPatch = `
   config:
     thresholdRatio: 0.95
     headroomTokens: 1024
+    maxTokens: 8192
 `;
 const budgetMem0 = `    memoryBudgetTokens: 2200
     captureStrataFolds: true
