@@ -116,3 +116,18 @@ test("sweep below threshold only drops what sits after an existing prefix break"
   const none = await setup().layer.sweepStale(fakeAgent(new FakeSession()));
   assert.equal(none.mode, "none");
 });
+
+test("fold landing emits strata/fold-landed for optional consumers", async () => {
+  const { engine, session, agent, layer, ctx } = setup();
+  const seen = [];
+  ctx.emit = (name, payload) => seen.push([name, payload]);
+  conversation(session);
+  const run = layer.snapshot(agent).runs.sort((a, b) => b.tokens - a.tokens)[0];
+  layer.propose(agent, `${run.startRef}–${run.endRef} answered questions\nAnswered questions 0-2 about the build.`);
+  await engine.finishTurn(agent);
+  const landed = seen.find(([name]) => name === "strata/fold-landed");
+  assert.ok(landed, "event emitted");
+  assert.equal(landed[1].foldId, "f1");
+  assert.equal(landed[1].sessionId, session.id);
+  assert.match(landed[1].summary, /Answered questions 0-2/);
+});

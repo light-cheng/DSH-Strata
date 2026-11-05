@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { configConflicts, conflictMessage, installedConflicts } from "./lib/conflicts.js";
 import { registerGuiRoutes } from "./lib/gui-routes.js";
+import { createBudget } from "./lib/budget.js";
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
 const OURS = "@lightcheng/dsh-strata";
@@ -130,5 +131,12 @@ export default class StrataGate {
       version = require("./package.json").version;
     } catch {}
     registerGuiRoutes(ctx, version);
+    // Shared token budget for context-injecting plugins (interop §2).
+    if (typeof ctx.inject === "function") {
+      ctx.inject(["tokenMeter"], (child) => {
+        if (typeof child?.provide !== "function") return;
+        child.provide("strataBudget", createBudget({ tokenMeter: child.get?.("tokenMeter") ?? child.tokenMeter }));
+      });
+    }
   }
 }

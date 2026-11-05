@@ -54,3 +54,22 @@ test("status route: per-session JSON, session id validated, fence respected, GET
   assert.equal(call(fenced, `${GUI_STATUS_PATH}?session=session-x`).statusCode, 403);
   assert.deepEqual(Object.keys(statusPayload("session-x", "1")).sort(), ["busy", "error", "events", "now", "takeover", "usage", "version"]);
 });
+
+test("strataBudget: stages follow the L1 stop line and the force line; summaries keep their budget when tight", async () => {
+  const { createBudget } = await import("../lib/budget.js");
+  const { readSettings } = await import("../lib/settings.js");
+  const settings = { ...readSettings({}), contextWindow: 100000 };
+  let total = 10000;
+  const budget = createBudget({ tokenMeter: { measure: () => ({ totalTokens: total }) } }, settings);
+  const session = { id: "budget-test" };
+  assert.equal(budget.pressure(session).stage, "normal");
+  assert.equal(budget.allowance(session, "mem0:recall", 2200), 2200);
+  total = 70000;
+  assert.equal(budget.pressure(session).stage, "tight");
+  assert.equal(budget.allowance(session, "mem0:recall", 2200), 1100);
+  assert.equal(budget.allowance(session, "plugin:dsh-mem0:profile", 1375), 1375);
+  total = 80000;
+  assert.equal(budget.pressure(session).stage, "critical");
+  assert.equal(budget.allowance(session, "plugin:dsh-mem0:profile", 1375), 512);
+  assert.equal(budget.allowance(session, "mem0:recall", 300), 300);
+});
