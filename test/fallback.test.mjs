@@ -45,6 +45,30 @@ test("yields without providing when another plugin already owns ctx.compaction",
   assert.ok(Object.keys(ctx.reflect.store).length === 0 && Object.getOwnPropertySymbols(ctx.reflect.store).length === 1, "the other provider is untouched");
 });
 
+test("a sibling preset's isolated stock engine does not make Strata yield (Web/Desktop presets)", () => {
+  // Cordis keeps all services in one store; each preset isolates `compaction`
+  // under its own key. Only this context's key may count as an owner.
+  const ctx = fakeContext();
+  const mine = Symbol("compaction");
+  const sibling = Symbol("compaction");
+  ctx[Symbol.for("cordis.isolate")] = { compaction: mine };
+  ctx.reflect.store = { [sibling]: { name: "compaction", fiber: { name: "@deepseek-ai/dsh-compaction-basic" } } };
+  const engine = new Entry(ctx, {});
+  assert.ok(engine instanceof Engine, "takes over its own preset");
+  assert.equal(takeover().mode, "active");
+  assert.ok(ctx.reflect.store[sibling], "the sibling preset's engine is untouched");
+});
+
+test("yields when this preset's own scope already has another compaction owner", () => {
+  const ctx = fakeContext();
+  const mine = Symbol("compaction");
+  ctx[Symbol.for("cordis.isolate")] = { compaction: mine };
+  ctx.reflect.store = { [mine]: { name: "compaction", fiber: { name: "billion-context" } } };
+  const engine = new Entry(ctx, {});
+  assert.equal(engine.strataPassive, true);
+  assert.equal(takeover().mode, "yielded");
+});
+
 test("engine constructor failure: /compact fails fast instead of hanging", () => {
   process.env.STRATA_ENGINE_FAIL = "construct";
   try {
