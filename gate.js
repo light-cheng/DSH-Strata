@@ -3,7 +3,7 @@ import { configConflicts, conflictMessage, installedConflicts } from "./lib/conf
 import { registerGuiRoutes } from "./lib/gui-routes.js";
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
-const OURS = "@light-cheng/dsh-strata";
+const OURS = "@lightcheng/dsh-strata";
 const PRESET_IDS = new Set(["standard", "ptc", "minimal", "cordis", "preset-standard", "preset-ptc", "preset-minimal", "preset-cordis"]);
 export const GATE_SERVICE = "strataPresetGate";
 export const PRESET_ENGINE_CONFIG = {

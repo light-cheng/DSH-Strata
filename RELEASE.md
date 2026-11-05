@@ -4,6 +4,18 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### v0.3.0 — published on npm as `@lightcheng/dsh-strata`
+
+- The package is renamed from `@light-cheng/dsh-strata` (GitHub releases only) to **`@lightcheng/dsh-strata`** and published on npm: `dsh plugin --profile desktop add @lightcheng/dsh-strata`.
+- Upgrading from 0.1–0.2: remove `@light-cheng/dsh-strata` first. While the old name is installed, the new package does not take over and logs a warning; DSH's stock compaction keeps running.
+- No behaviour changes otherwise.
+
+Verification:
+- 36 unit tests and four script tests pass; `npm run check` passes; the packed tarball (35 files, 97.7 kB) contains no local paths, and every relative import resolves.
+- Real CLI, headless, DeepSeek V4.1 Flash: Strata alone takes over; with `dsh-live-compact` installed before **or** after it, and with the old `@light-cheng/dsh-strata`, it yields with a warning; with its engine forced to fail, DSH's stock compaction runs.
+- Real-model eval: recall 4/4 from the archive after the source file was deleted; a full T1 → T2 → T3 chain landed (7 folds) and 4/4 facts came back through `search_context`.
+- Web: no takeover warnings across presets; the plugin page shows **Strata 分层上下文** with icons and names for all three components; the composer dock renders and tracks context use.
+
 ### v0.2.2 — display names
 
 - The plugin page now shows localized names and descriptions, in the same format as DSH-Mem0: **Strata Context** / **Strata 分层上下文**, with its own entries for the preset gate and the context tools (`locale/*.json`, `locale/gate/*.json`, `locale/tools/*.json`).
@@ -46,6 +58,18 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### v0.3.0 — 以 `@lightcheng/dsh-strata` 发布到 npm
+
+- 包名从 `@light-cheng/dsh-strata`（只在 GitHub 发布）改为 **`@lightcheng/dsh-strata`**，并发布到 npm：`dsh plugin --profile desktop add @lightcheng/dsh-strata`。
+- 从 0.1–0.2 升级：请先卸载 `@light-cheng/dsh-strata`。旧包名还装着时，新包不接管并打出警告，DSH 原版压缩照常运行。
+- 除此之外行为不变。
+
+验证：
+- 36 个单元测试和 4 个脚本测试通过；`npm run check` 通过；打出的包（35 个文件，97.7 kB）不含本机路径，所有相对引用都能解析。
+- 真实 CLI，headless，DeepSeek V4.1 Flash：单独安装时接管；`dsh-live-compact` 不论装在前还是装在后、以及旧的 `@light-cheng/dsh-strata` 在场时，都让出并给出警告；强制引擎加载失败时，DSH 原版压缩运行。
+- 真实模型评测：源文件删除后从存档召回 4/4；完整落地 T1 → T2 → T3 折叠链（7 个折叠），4/4 事实通过 `search_context` 找回。
+- Web：各预设都没有未接管警告；插件页面显示 **Strata 分层上下文**，三个组件都有图标和名称；输入框浮标正常显示并跟随上下文占用。
 
 ### v0.2.2 — 显示名称
 

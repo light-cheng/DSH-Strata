@@ -1,11 +1,11 @@
-# Strata Context (@light-cheng/dsh-strata) bundle patch.
+# Strata Context (@lightcheng/dsh-strata) bundle patch.
 # Host stock stays disabled so this engine can register ctx.compaction.
 # If the engine cannot load, shell.js falls back to the stock engine.
 - id: compaction-basic
   disabled: true
 - insert:
     - id: compaction-strata
-      name: '@light-cheng/dsh-strata'
+      name: '@lightcheng/dsh-strata'
       config:
         auto: true
         # These values are also copied onto the web preset engine by gate.js.
@@ -14,6 +14,6 @@
         retainTokens: 8192
         compactionRetries: 0
     - id: strata-gate
-      name: '@light-cheng/dsh-strata/gate'
+      name: '@lightcheng/dsh-strata/gate'
     - id: strata-tools
-      name: '@light-cheng/dsh-strata/tools'
+      name: '@lightcheng/dsh-strata/tools'

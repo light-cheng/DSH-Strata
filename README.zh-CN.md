@@ -64,10 +64,16 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 
 需要 DSH `>=0.2.1-rc.5 <0.3.0` 和 Node `>=22`。支持 Web / Desktop 预设和 headless，不支持 TUI 预设。
 
-用 Release 里的预构建包：
+从 npm 安装：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.2/light-cheng-dsh-strata-0.2.2.tgz
+dsh plugin --profile desktop add @lightcheng/dsh-strata
+```
+
+用 GitHub Release 里的预构建包（不经过 npm）：
+
+```bash
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.3.0/lightcheng-dsh-strata-0.3.0.tgz
 ```
 
 用本地源码：
@@ -75,6 +81,8 @@ dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/relea
 ```bash
 dsh plugin --profile desktop add link:"$(pwd)"
 ```
+
+> **从 0.1–0.2 升级：** 那几个版本的包名是 `@light-cheng/dsh-strata`（只在 GitHub 发布）。请先用 `dsh plugin --profile desktop remove @light-cheng/dsh-strata` 卸掉旧名字；旧包还在时，新包不会接管。
 
 装好后重启 DSH，在新会话里发 `/strata`，应该显示 `Strata Context: active`。
 

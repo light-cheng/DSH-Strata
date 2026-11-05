@@ -82,7 +82,7 @@ test("engine constructor failure: /compact fails fast instead of hanging", () =>
 
 test("conflict detection helpers", () => {
   assert.deepEqual(installedConflicts({ resolve() { throw new Error("nope"); }, env: {} }), []);
-  assert.deepEqual(installedConflicts({ resolve() { return "/x"; }, env: {} }).map((item) => item.name), ["dsh-live-compact", "billion-context"]);
+  assert.deepEqual(installedConflicts({ resolve() { return "/x"; }, env: {} }).map((item) => item.name), ["dsh-live-compact", "billion-context", "@light-cheng/dsh-strata"]);
   assert.deepEqual(installedConflicts({ resolve() { return "/x"; }, env: { STRATA_IGNORE_CONFLICTS: "1" } }), []);
   const preset = { id: "standard", plugins: [{ name: "@deepseek-ai/dsh-compaction-basic" }, { name: "billion-context/native" }, { name: "dsh-live-compact", disabled: true }] };
   assert.deepEqual(configConflicts(preset), ["billion-context"]);

@@ -66,7 +66,7 @@ function sh(command, commandArgs, options = {}) {
 function pack() {
   console.log("Pack the plugin:");
   const out = sh("npm", ["pack", "--pack-destination", work, "--json"], { cwd: repo });
-  if (!RUN) return join(work, "light-cheng-dsh-strata-<version>.tgz");
+  if (!RUN) return join(work, "lightcheng-dsh-strata-<version>.tgz");
   const packed = JSON.parse(out.stdout);
   // npm ≤11 prints an array; npm 12 prints an object keyed by package name.
   return join(work, (Array.isArray(packed) ? packed : Object.values(packed))[0].filename);
