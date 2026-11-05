@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Strata Context: layered, restorable context management for DeepSeek Harness. Deterministic tail cuts, model-written folds, a local archive, and search.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/light-cheng/dsh-strata.git"
+  },
+  "homepage": "https://github.com/light-cheng/dsh-strata#readme",
+  "bugs": {
+    "url": "https://github.com/light-cheng/dsh-strata/issues"
+  },
   "type": "module",
   "main": "shell.js",
   "exports": {
