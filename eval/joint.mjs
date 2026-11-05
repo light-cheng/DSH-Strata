@@ -53,6 +53,8 @@ const mem0Patch = `
     authType: none
     userId: ${USER}
     recallTopK: 4
+    translateMemories: false
+    hygieneEnabled: false
 `;
 const smallPatch = `
 - id: llm-deepseek
