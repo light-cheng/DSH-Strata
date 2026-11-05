@@ -143,7 +143,7 @@ export function apply(ctx) {
 
   ctx.inject(["commands"], (sub) => {
     sub.effect(() => sub.commands.register({
-      definitionId: "@light-cheng/dsh-strata/strata",
+      definitionId: "@lightcheng/dsh-strata/strata",
       name: "strata",
       description: "Strata Context: layers, foldable ranges, cache hit rate, archive search",
       input: { hint: "status | detail | search <words> | purge" },

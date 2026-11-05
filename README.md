@@ -64,10 +64,16 @@ Rules: L1 only cuts raw nodes. A fold may cover raw nodes, cards and whole lower
 
 Requires DSH `>=0.2.1-rc.5 <0.3.0` and Node `>=22`. The Web / Desktop presets and headless are supported; the TUI preset is not.
 
-From the prebuilt release tarball:
+From npm:
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.2/light-cheng-dsh-strata-0.2.2.tgz
+dsh plugin --profile desktop add @lightcheng/dsh-strata
+```
+
+From a GitHub release tarball (no npm):
+
+```bash
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.3.0/lightcheng-dsh-strata-0.3.0.tgz
 ```
 
 From a local checkout:
@@ -75,6 +81,8 @@ From a local checkout:
 ```bash
 dsh plugin --profile desktop add link:"$(pwd)"
 ```
+
+> **Upgrading from 0.1–0.2:** those releases were named `@light-cheng/dsh-strata` (GitHub only). Remove the old name first with `dsh plugin --profile desktop remove @light-cheng/dsh-strata`; while it is installed, the new package does not take over.
 
 Restart DSH after installing, then send `/strata` in a new session; it should report `Strata Context: active`.
 

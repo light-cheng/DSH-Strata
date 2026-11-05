@@ -6,14 +6,14 @@
 // (lib/gui-routes.js). Colours follow the family: currentColor (black / white
 // with the theme), light blue on success, red on failure.
 window.__ModuleLoader__.load({
-  id: '@light-cheng/dsh-strata',
+  id: '@lightcheng/dsh-strata',
   factory(require) {
     const React = require('react')
     const h = React.createElement
     const { useEffect, useLayoutEffect, useRef, useState } = React
 
     const NS = 'dsh-strata.dock'
-    const PKG = '@light-cheng/dsh-strata'
+    const PKG = '@lightcheng/dsh-strata'
     const STATUS_PATH = 'dsh-strata/gui/status'
     const POLL_MS = 2000
     /** An event older than this when first seen is shown as text only, without animation. */

@@ -173,7 +173,7 @@ const rewritten = rewritePresetConfig({
     },
   ],
 }, true);
-assert.equal(rewritten.plugins[1].config[0].name, "@light-cheng/dsh-strata");
+assert.equal(rewritten.plugins[1].config[0].name, "@lightcheng/dsh-strata");
 assert.equal(rewritten.plugins[1].config[0].id, "compaction-basic");
 assert.equal(rewritten.plugins[1].config[0].config.thresholdRatio, 0.8);
 assert.equal(rewritten.plugins[1].config[0].config.headroomTokens, 65536);
@@ -183,7 +183,7 @@ const presetRow = rewritePresetConfig({
   id: "preset-standard",
   config: { id: "standard", plugins: [{ id: "compaction-basic", name: "@deepseek-ai/dsh-compaction-basic" }] },
 }, true);
-assert.equal(presetRow.config.plugins[0].name, "@light-cheng/dsh-strata");
+assert.equal(presetRow.config.plugins[0].name, "@lightcheng/dsh-strata");
 assert.equal(rewritePresetConfig({
   id: "standard",
   plugins: [{ id: "compaction-basic", name: "@deepseek-ai/dsh-compaction-basic" }],
