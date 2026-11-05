@@ -73,7 +73,7 @@ dsh plugin --profile desktop add @lightcheng/dsh-strata
 From a GitHub release tarball (no npm):
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.0/lightcheng-dsh-strata-0.4.0.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.1/lightcheng-dsh-strata-0.4.1.tgz
 ```
 
 From a local checkout:
@@ -126,7 +126,7 @@ npm test
 npm run check
 ```
 
-36 unit tests cover L1 cuts, fold validation and landing, T1–T3 tiers, tier-by-tier `decompress`, search, the cost estimate, per-preset takeover, the stock fallback, and the dock's activity record and status route. `node eval/run.mjs` prints the real-model evaluation plan; `--run` executes it in isolated `DSH_HOME`s under `eval/.work/`. Results with DeepSeek V4.1 Flash are recorded in [`docs/design.md`](docs/design.md) §11.10.
+54 unit tests cover L1 cuts, fold validation and landing, T1–T3 tiers, tier-by-tier `decompress`, search, the cost estimate, per-preset takeover, the stock fallback, and the dock's activity record and status route. `node eval/run.mjs` prints the real-model evaluation plan; `--run` executes it in isolated `DSH_HOME`s under `eval/.work/`. Results with DeepSeek V4.1 Flash are recorded in [`docs/design.md`](docs/design.md) §11.10.
 
 ## Privacy and data
 
