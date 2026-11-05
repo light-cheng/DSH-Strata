@@ -180,6 +180,15 @@ const SUITE_RUNNERS = {
   tiers(arm, setup) {
     if (arm !== "strata") return { skipped: "tiers needs the Strata tools" };
     if (RUN) fixtures.writeTiers(setup.cwd);
+    // Isolate L2. With L1 on, each finished read is cut into a ~500-token card
+    // at turn end, so the per-task folds this suite asks for reclaim almost
+    // nothing and upgrades never pay (seen in the 2026-11-05 run, design
+    // §11.10). In real sessions T1 folds cover many cards; here we test the
+    // T1 → T2 → T3 mechanics directly. (0 is ignored by readSettings, hence a
+    // tiny ratio: L1 stops above ~100 tokens, i.e. never cuts.) Small folds
+    // near the tail also fail the cache-cost check, so a tiny force ratio
+    // makes every valid fold land (it also nudges every turn).
+    setup = { ...setup, env: { ...setup.env, STRATA_L1_STOP_RATIO: "0.0001", STRATA_FORCE_PCT: "0.0001" } };
     let id = "";
     const steps = [];
     for (const prompt of fixtures.tiers.tasks) {
