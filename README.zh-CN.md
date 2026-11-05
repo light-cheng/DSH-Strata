@@ -73,7 +73,7 @@ dsh plugin --profile desktop add @lightcheng/dsh-strata
 用 GitHub Release 里的预构建包（不经过 npm）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.3.0/lightcheng-dsh-strata-0.3.0.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.0/lightcheng-dsh-strata-0.4.0.tgz
 ```
 
 用本地源码：

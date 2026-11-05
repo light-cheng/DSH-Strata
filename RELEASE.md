@@ -4,7 +4,7 @@ English is the default; the Chinese version follows below.
 
 ## English
 
-### Unreleased
+### v0.4.0 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
 - **Runtime-context snapshots** (for example DSH-Mem0's recalled memories): only the newest stays on the surface; superseded ones are never archived, carded or folded, and are replaced by a `[strata:dropped kind=runtime-context]` placeholder at turn end (free when the prefix already broke, otherwise when it pays, always above 75%). See `docs/interop-dsh-mem0.md`.
 - **`strataBudget` service** (pressure / allowance / countTokens) for context plugins, and a `strata/fold-landed` event.
@@ -12,6 +12,10 @@ English is the default; the Chinese version follows below.
 - **One-time archive scrub:** on the first start after upgrading, Strata walks `<DSH_HOME>/strata/` once and cleans existing archive files left by 0.3.0: runtime-context snapshots and `<mem0-relevant-memories>` blocks become the same placeholder, `<mem0-user-profile>` blocks become `[strata:dropped kind=user-profile]`, and system-prompt sections in official-summary archives become `[system prompt omitted]`. Other text stays byte-identical, files stay `0600`, and a marker file (`.scrub-runtime-context-v2`) keeps it from running again; the log line says how many blocks were scrubbed. To remove a session's archive entirely, use `/strata purge`.
 - **`strata_status` warning:** when DSH's automatic compaction is off because the request's `maxTokens` plus headroom do not fit the context window, `strata_status` starts with a warning line naming the model.
 - **Composer dock:** when a fold, a card and a cleanup land in the same turn end, the dock now plays the fold instead of whichever came last.
+
+Verification:
+- 52 unit tests pass; `npm run check` passes; the packed tarball contains no local paths.
+- Joint test with DSH-Mem0 (J1–J6: snapshots, fold, capture, cache, budget, Web docks), DeepSeek V4.1 Flash: all pass.
 
 ### v0.3.0 — published on npm as `@lightcheng/dsh-strata`
 
@@ -68,7 +72,7 @@ Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recov
 
 ## 简体中文
 
-### 未发布
+### v0.4.0 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
 - **运行时上下文快照**（比如 DSH-Mem0 召回的记忆）：surface 上只保留最新一份；更早的不存档、不切卡、不折叠，轮末换成 `[strata:dropped kind=runtime-context]` 占位（前缀已断时顺带清理，否则划算时清理，超过 75% 时直接清理）。见 `docs/interop-dsh-mem0.md`。
 - 为上下文插件提供 **`strataBudget` 服务**（pressure / allowance / countTokens），并发出 `strata/fold-landed` 事件。
@@ -76,6 +80,10 @@ Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recov
 - **一次性存档清理：** 升级后第一次启动时，Strata 把 `<DSH_HOME>/strata/` 走一遍，清理 0.3.0 留下的已有存档文件：运行时上下文快照和 `<mem0-relevant-memories>` 块换成同样的占位，`<mem0-user-profile>` 块换成 `[strata:dropped kind=user-profile]`，官方摘要存档里的系统提示词段落换成 `[system prompt omitted]`。其他内容逐字节不变，文件权限保持 `0600`；写下标记文件（`.scrub-runtime-context-v2`）后不再重复执行，日志里记下清理了多少块。要整个删掉某个会话的存档，用 `/strata purge`。
 - **`strata_status` 警告：** 请求的 `maxTokens` 加上余量超出上下文窗口、DSH 自动压缩因此不工作时，`strata_status` 第一行给出警告并写明模型。
 - **输入框浮标：** 同一次轮末同时落地折叠、卡片和清理时，浮标播放折叠动画，而不是最后到达的那一个。
+
+验证：
+- 52 个单元测试通过；`npm run check` 通过；打出的包不含本机路径。
+- 与 DSH-Mem0 的联合测试（J1–J6：快照、折叠、记忆写入、缓存、预算、Web 浮标），DeepSeek V4.1 Flash：全部通过。
 
 ### v0.3.0 — 以 `@lightcheng/dsh-strata` 发布到 npm
 
