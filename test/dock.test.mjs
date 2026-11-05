@@ -72,4 +72,9 @@ test("strataBudget: stages follow the L1 stop line and the force line; summaries
   assert.equal(budget.pressure(session).stage, "critical");
   assert.equal(budget.allowance(session, "plugin:dsh-mem0:profile", 1375), 512);
   assert.equal(budget.allowance(session, "mem0:recall", 300), 300);
+  assert.equal(typeof budget.countTokens("hello world"), "number");
+  const broken = createBudget({ tokenMeter: { measure() { throw new Error("x"); }, estimateText() { throw new Error("y"); } } }, settings);
+  assert.equal(broken.pressure({ id: "nobody" }).stage, "normal", "never throws");
+  assert.equal(broken.allowance({ id: "nobody" }, "mem0:recall", 900), 900);
+  assert.equal(broken.countTokens("abcd"), 1);
 });

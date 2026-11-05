@@ -1,6 +1,6 @@
-# dsh-strata × DSH-Mem0 互操作约定（草案 v1，2026-11-05）
+# dsh-strata × DSH-Mem0 互操作约定（v2，2026-11-05，DSH-Mem0 已确认）
 
-dsh-strata 牵头起草，DSH-Mem0 确认后两边各自实现。版本基线：dsh-strata 0.3.0，DSH-Mem0 0.3.0，DSH 0.2.1-rc.5。
+dsh-strata 牵头起草，DSH-Mem0 已确认 v1，并提出了 §2、§4、§5 的修改，v2 已经并入。版本基线：dsh-strata 0.3.0，DSH-Mem0 0.3.0，DSH 0.2.1-rc.5。
 
 ## 0. 现状（已核实）
 
@@ -47,8 +47,14 @@ DSH-Mem0 这边：不用改。可选：召回结果没变时不要改动 `mem0:r
      - `critical`：给 `min(wanted, 512)`；
      - 摘要段（name 以 `:profile` 结尾）在 `tight` 档不减。
    - 计数统一用 DSH `tokenMeter`。Mem0 原来的 `estimateTokens` 只用来在 Mem0 内部裁剪文本。
-2. **Mem0 调用方式：** 召回前 `allowance(session, "mem0:recall", memoryBudgetTokens)`，摘要用 `allowance(session, "plugin:dsh-mem0:profile", profileBudgetTokens)`，拿到的数作为本轮上限。
-3. **Strata 的记账：** 系统提示段和最新快照都算「保护层」，`strata_status` 和浮标的占用数字里都包含；stale 单独列出。
+2. **Mem0 调用方式：**
+   - 召回前调用 `allowance(session, "mem0:recall", memoryBudgetTokens)`，拿到的数作为本轮上限。
+   - **摘要不按轮调用 allowance。** 摘要在系统提示里，每轮改长度会让前缀缓存整段失效，比多占几百 token 贵得多。只在重建摘要时（巡检、手动编辑）参考一次 `pressure`。
+3. **服务约束（Mem0 的要求）：**
+   - `pressure`、`allowance` 同步返回，不做 I/O，不抛错；
+   - Mem0 用 `ctx.get('strataBudget')` 可选地拿，不做硬注入，没装 Strata 时不影响加载；
+   - 附带 `countTokens(text)`，和 Strata 阈值用同一个 DSH tokenMeter，Mem0 有就用它裁剪。
+4. **Strata 的记账：** 系统提示段和最新快照都算「保护层」，`strata_status` 和浮标的占用数字里都包含；stale 单独列出。
 
 ## 3. 记忆捕获和压缩的先后顺序
 
@@ -62,12 +68,22 @@ DSH-Mem0 这边：不用改。可选：召回结果没变时不要改动 `mem0:r
 
 ## 4. 互相利用（可选，第二阶段）
 
-- **折叠摘要作为记忆来源。** L2 落地后，Strata 发出 `strata/fold-landed` 事件 `{ sessionId, foldId, tier, topic, summary, range }`。Mem0 如果愿意，可以把 T1 摘要当成一段「已经整理过的对话」捕获，`metadata.source = "dsh-strata"`、`metadata.fold = foldId`，能解决原评审里 I2 提到的中间叙述噪声。默认关闭，由 Mem0 配置开启。
+- **折叠摘要作为记忆来源（要做，排在 §1、§2 之后，默认关闭）。**
+  - L2 落地后，Strata 发出 `strata/fold-landed` 事件 `{ sessionId, foldId, tier, topic, summary, range: { start, end, seqs } }`。`seqs` 是折叠覆盖的会话事件序号，Mem0 用它和自己的原文捕获去重。
+  - payload 里不带绝对路径。摘要进 Mem0 前要走 Mem0 的脱敏。
+  - Mem0 存这类记忆时用 `metadata.source = "dsh"`（只有这样巡检才会清理它们），再加 `metadata.via = "dsh-strata"`、`metadata.fold = <foldId>`。
+  - 这样能解决原评审里 I2 提到的中间叙述噪声。
 - **反向：Mem0 记住的就可以放心折叠。** 暂不做。Strata 的原文全在本地存档，折叠本来就不会丢细节，收益不大。
 
 ## 5. 联合测试（两个插件同时装）
 
-在临时 profile 里同时装 Mem0（OSS 或 mock 后端）和 Strata，模型走 magpie：
+在临时 profile 里同时装 Mem0 和 Strata：
+- **后端：** Mem0 用 mock（`DSH-Mem0/scripts/mock-mem0-server.mjs`），配置里写死 `backend: server`，否则 auto 可能连到用户真实的 OSS / Qdrant。另外设 `translateMemories: false`、`hygieneEnabled: false`。另做一次本地 OSS 冒烟：用临时 collection、临时 history-db 和测试 user id，跑完删 collection。
+- **模型：** 走 magpie，固定 `workbuddy/deepseek-v4.1-flash`，不经过 `group/*` 或 `auto/*` 路由组，结果里写明 model id。命中率抖动时，换 `claude/claude-haiku-5-5` 对照。
+- **脚本：** `eval/joint.mjs`。
+- **J4 的统计：** 跨轮时 Mem0 的召回块会重新编号，所以快照数量不按「内容相同就不追加」来预期。
+
+测试项：
 
 | 编号 | 场景 | 通过标准 |
 |---|---|---|
@@ -90,6 +106,9 @@ DSH-Mem0 这边：不用改。可选：召回结果没变时不要改动 `mem0:r
 
 ## 7. 待 DSH-Mem0 确认
 
-1. §2 的分档比例（一半 / 512）和「摘要段在 tight 档不减」是否可以接受。
-2. §4 第二阶段是否要做；如果做，摘要捕获默认关闭是否同意。
-3. 联合测试用哪个后端：mock 后端（可复现）还是本地 OSS（真实）。
+DSH-Mem0 已答复（v2 已并入）：
+1. 分档比例同意；摘要不按轮调用 allowance。
+2. §4 第二阶段要做，默认关闭；metadata 用 `source: "dsh"` 加 `via`、`fold`；`range` 带事件序号。
+3. J1–J6 用 mock，另做一次本地 OSS 冒烟。
+
+另外确认：Mem0 不把 runtime-context 快照当作用户输入；Strata 也不再把它当成「最新用户消息」来保护（它的分类是 `context`，不是 `raw`）。召回块不进 Strata 归档，README 隐私一节写明。
