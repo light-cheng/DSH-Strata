@@ -164,6 +164,27 @@ window.__ModuleLoader__.load({
       return response.json()
     }
 
+    const RANK = { ctx: 0, L1: 1, L2: 2, 'L∞': 3 }
+
+    /**
+     * Pick what to play from the events newer than `seenAt`. One turn-end
+     * maintenance can land a fold, a card and a stale sweep between two polls;
+     * playing only the last one hid the fold (joint test J6). The biggest layer
+     * wins, then the larger reclaim; `at` is the newest event's, so the play
+     * mark moves past all of them.
+     */
+    function pickEvent(events, seenAt) {
+      const fresh = (events || []).filter((event) => event.at > seenAt)
+      if (fresh.length === 0) return null
+      const best = fresh.reduce((a, b) => {
+        const ra = RANK[a.layer] ?? 0
+        const rb = RANK[b.layer] ?? 0
+        if (rb !== ra) return rb > ra ? b : a
+        return (b.reclaimed || 0) > (a.reclaimed || 0) ? b : a
+      })
+      return { ...best, at: Math.max(...fresh.map((event) => event.at)) }
+    }
+
     function eventLabel(t, event) {
       const saved = event.reclaimed ? ` −${kTokens(event.reclaimed)}` : ''
       if (event.layer === 'L1') return `${t('card')}${saved}`
@@ -189,13 +210,13 @@ window.__ModuleLoader__.load({
             if (!live) return
             setData(next)
             setFailed(false)
-            const latest = next.events?.[next.events.length - 1]
             // The first poll only records where we are; old events do not replay.
             if (seen.current === null) {
-              seen.current = latest?.at ?? 0
+              seen.current = next.events?.[next.events.length - 1]?.at ?? 0
               return
             }
-            if (latest && latest.at > seen.current) {
+            const latest = pickEvent(next.events, seen.current)
+            if (latest) {
               seen.current = latest.at
               const fresh = (next.now ?? Date.now()) - latest.at < FRESH_MS
               setPlay((prev) => ({
@@ -283,6 +304,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale'], apply }
+    return { inject: ['slots', 'locale'], apply, __test: { pickEvent } }
   },
 })
