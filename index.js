@@ -11,6 +11,7 @@ import { rotateShadow, sessionDir, shadowFileBody, shadowMaxBytes } from "./shad
 import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { StrataLayer } from "./lib/l2.js";
+import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
 import { recordCard } from "./lib/archive.js";
 
@@ -34,6 +35,8 @@ function eventContent(session, seq) {
   if (event?.type === "user/message") return event.data?.content ?? event.data?.message?.content;
   return event?.data?.content ?? event?.data?.message?.content ?? event?.data;
 }
+
+const STALE_CONTEXT_NOTE = "[superseded runtime context dropped]";
 
 function eventText(session, seq) {
   const event = session.eventAt(seq);
@@ -340,7 +343,7 @@ export default class StrataEngine extends BasicCompactionEngine {
     for (const seq of session.surface.nodes) {
       if (seq === chunk.start) on = true;
       if (!on) continue;
-      messages.push({ role: eventRole(session, seq), content: eventText(session, seq) });
+      messages.push({ role: eventRole(session, seq), content: isRuntimeSnapshot(session.eventAt(seq)) ? STALE_CONTEXT_NOTE : eventText(session, seq) });
       if (seq === chunk.end) break;
     }
     return planMessages(messages);
@@ -356,6 +359,9 @@ export default class StrataEngine extends BasicCompactionEngine {
         const op = AbortSignal.any([agentSignal, signal]);
         // ① L2: land pending folds first (design §2.2), one flush per turn.
         const layer = this.strataLayer;
+        // Where this maintenance first breaks the prefix: stale snapshots after it drop for free (interop §1).
+        const beforeLayout = layer.layout(agent.session);
+        const changeMark = layer.state(agent).changes.length;
         try {
           await layer.flush(agent, op);
         } catch (error) {
@@ -363,6 +369,7 @@ export default class StrataEngine extends BasicCompactionEngine {
           this.ctx.logger?.warn?.(`strata fold flush skipped: ${message}`);
         }
         // ② L1 tail cut. It stops above window × l1StopRatio and yields to L2 / L∞.
+        await (async () => {
         const window = await layer.resolveWindow(agent, op);
         const measurement = this.ctx.tokenMeter.measure(agent.session);
         const stopTokens = Math.floor(window * layer.settings.l1StopRatio);
@@ -386,6 +393,18 @@ export default class StrataEngine extends BasicCompactionEngine {
           const to = nodes.indexOf(chunk.end);
           if (nodes.slice(from, to + 1).some((seq) => pendingSeqs.has(seq))) {
             this.ctx.logger?.debug?.("strata cut skipped: overlaps a pending fold");
+            return;
+          }
+        }
+        // Never cut the live runtime-context snapshot: DSH appends a new one only when a context changes.
+        {
+          const nodes = agent.session.surface.nodes;
+          const from = nodes.indexOf(chunk.start);
+          const to = nodes.indexOf(chunk.end);
+          const live = beforeLayout.live >= 0 ? beforeLayout.rows[beforeLayout.live]?.seq : undefined;
+          const liveNow = [...nodes].reverse().find((seq) => isRuntimeSnapshot(agent.session.eventAt(seq)));
+          if (nodes.slice(from, to + 1).some((seq) => seq === liveNow || seq === live)) {
+            this.ctx.logger?.debug?.("strata cut skipped: would cover the live runtime context");
             return;
           }
         }
@@ -420,6 +439,16 @@ export default class StrataEngine extends BasicCompactionEngine {
         }
         await this.ctx.sessions?.flush?.(agent.session);
         this.rememberPrefix(agent);
+        })();
+        // ③ Superseded runtime-context snapshots (interop §1).
+        try {
+          const starts = layer.state(agent).changes.slice(changeMark).map((change) => beforeLayout.rows.find((row) => row.seq === change.start)?.index).filter((index) => Number.isInteger(index));
+          const swept = await layer.sweepStale(agent, { fromIndex: starts.length ? Math.min(...starts) : Number.POSITIVE_INFINITY, signal: op });
+          if (swept.dropped.length) this.rememberPrefix(agent);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.ctx.logger?.warn?.(`strata stale-context sweep skipped: ${message}`);
+        }
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -459,7 +488,8 @@ export default class StrataEngine extends BasicCompactionEngine {
       const event = session.eventAt(seq);
       messages.push({
         role: eventRole(session, seq),
-        content: eventContent(session, seq),
+        // Superseded runtime context is not archived or carded (interop §1).
+        content: isRuntimeSnapshot(event) ? [{ type: "text", text: STALE_CONTEXT_NOTE }] : eventContent(session, seq),
         toolCallId: event?.data?.message?.toolCallId || "",
       });
     }
