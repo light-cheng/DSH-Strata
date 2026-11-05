@@ -1,7 +1,7 @@
 // Deterministic fixtures for eval/run.mjs. A fixed seed keeps every arm and
 // every rerun on identical inputs.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function rng(seed) {
@@ -29,12 +29,13 @@ export function buildFixtures(seed = 20261104) {
   const logs = Array.from({ length: fillFiles }, (_, index) => logFile(random, index, fillLines));
   // One real anomaly per run, so the fill task has something to find.
   logs[17] = logs[17].replace(/step 412 ok/, "step 412 ERROR checksum mismatch code=E-7731");
-  const recallFacts = ["RIVET-4471", "port 47821", "sha256:9f2c41ab", "owner=ines.kowalski"];
+  // Scored values only (not surrounding words), so "Port: 47821" counts.
+  const recallFacts = ["RIVET-4471", "47821", "sha256:9f2c41ab", "ines.kowalski"];
   const recallLog = [
     logFile(random, 90, 600),
-    `deploy note: rollout token ${recallFacts[0]} bound on ${recallFacts[1]}`,
+    `deploy note: rollout token ${recallFacts[0]} bound on port ${recallFacts[1]}`,
     logFile(random, 91, 600),
-    `artifact digest ${recallFacts[2]} signed by ${recallFacts[3]}`,
+    `artifact digest ${recallFacts[2]} signed by owner=${recallFacts[3]}`,
     logFile(random, 92, 600),
   ].join("\n");
   const tierFacts = [
@@ -48,10 +49,10 @@ export function buildFixtures(seed = 20261104) {
     tiers: {
       // Four short tasks; each is folded to T1, pairs to T2, everything to T3.
       tasks: tierFacts.map((item) => `Read ./tiers/${item.file} completely with your file tools and tell me in one sentence what unusual line it contains.`),
-      foldT1: "Use strata_status and compress the range covering the most recent finished log task into a one-line summary (no identifiers). Reply OK.",
-      foldT2: "Use strata_status. Compress each pair of adjacent T1 folds into one T2 fold with a one-line summary (no identifiers). Reply OK.",
-      foldT3: "Use strata_status. Compress the adjacent T2 folds into one T3 fold with a one-line summary (no identifiers). Reply OK.",
-      question: "For each of billing.log, auth.log, search.log and storage.log, quote the unusual line exactly. Use decompress (one tier at a time or full:true) or search_context to recover it; do not guess.",
+      foldT1: "Use strata_status (detail). Compress only the nodes of the log task you just finished (from my request to read the file through your answer) into a one-line summary with no identifiers. Do NOT include any existing fold: this must be a new T1 fold. Reply with the first line compress returned.",
+      foldT2: "Use strata_status (detail). There should be four T1 folds. Make two T2 folds: one covering exactly the first two T1 folds, one covering exactly the last two (each range starts at the first fold's ref and ends at the second fold's ref). One-line summary each, no identifiers. Reply with the first line each compress returned.",
+      foldT3: "Use strata_status (detail). Compress one range from the first T2 fold through the second T2 fold into a single T3 fold with a one-line summary, no identifiers. Reply with the first line compress returned.",
+      question: "The log files have been deleted from disk. For each of billing.log, auth.log, search.log and storage.log, quote the unusual line exactly. Use decompress (one tier at a time or full:true) or search_context to recover it; do not guess.",
       expected: ["INV-58213", "ed25519-7c41", "4217 seconds", "9.5 TiB"],
     },
     fill: {
@@ -67,8 +68,12 @@ export function buildFixtures(seed = 20261104) {
     recall: {
       read: "Read ./recall/deploy.log completely with your file tools and tell me only how many lines it has.",
       fold: "That log is done. Use strata_status, then compress the range that contains the deploy.log reading into a short summary (do not copy identifiers into the summary). Reply OK when done.",
-      question: "From deploy.log: what was the rollout token, which port was it bound on, what was the artifact digest and who signed it? Use decompress or search_context if the details are not in front of you.",
+      question: "deploy.log has been deleted from disk. From it: what was the rollout token, which port was it bound on, what was the artifact digest and who signed it? Use decompress or search_context if the details are not in front of you.",
       expected: recallFacts,
+    },
+    /** Remove sources so recovery must go through context or Strata's archive. */
+    removeSources(dir, name) {
+      rmSync(join(dir, name), { recursive: true, force: true });
     },
     writeFill(dir) {
       mkdirSync(join(dir, "logs"), { recursive: true });
