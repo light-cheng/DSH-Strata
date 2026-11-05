@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Strata Context",
+    "description": "Layered, restorable context for DSH: old tool output becomes cards each turn, the model folds older ranges into summaries in up to three tiers, and every original stays in a local archive for restore and search."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Strata 预设接管",
+    "description": "让 Web / Desktop 的每个 Agent 预设都使用 Strata 引擎，并提供输入框浮标的状态接口。"
+  }
+}

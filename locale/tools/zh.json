@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Strata 上下文工具",
+    "description": "给模型的 compress、decompress、search_context、strata_status 工具，/strata 命令和折叠提醒。"
+  }
+}

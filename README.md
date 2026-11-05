@@ -67,7 +67,7 @@ Requires DSH `>=0.2.1-rc.5 <0.3.0` and Node `>=22`. The Web / Desktop presets an
 From the prebuilt release tarball:
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.1/light-cheng-dsh-strata-0.2.1.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.2.2/light-cheng-dsh-strata-0.2.2.tgz
 ```
 
 From a local checkout:

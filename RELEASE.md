@@ -4,6 +4,12 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### v0.2.2 — display names
+
+- The plugin page now shows localized names and descriptions, in the same format as DSH-Mem0: **Strata Context** / **Strata 分层上下文**, with its own entries for the preset gate and the context tools (`locale/*.json`, `locale/gate/*.json`, `locale/tools/*.json`).
+
+Verification: 36 unit tests pass; all six locale specifiers and three icon specifiers resolve from an installed copy.
+
 ### v0.2.1 — component icons
 
 - The `strata-gate` and `strata-tools` components now show the Strata icon on the plugin page too (`exports["./gate/icon"]`, `exports["./tools/icon"]`). DSH reads a subpath component's icon only from `<specifier>/icon`.
@@ -40,6 +46,12 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### v0.2.2 — 显示名称
+
+- 插件页面现在显示本地化的名称和描述，格式与 DSH-Mem0 一致：**Strata 分层上下文** / **Strata Context**，预设接管和上下文工具两个组件也有各自的名称（`locale/*.json`、`locale/gate/*.json`、`locale/tools/*.json`）。
+
+验证：36 个单元测试通过；在安装后的副本里六个语言文件路径和三个图标路径都能解析。
 
 ### v0.2.1 — 组件图标
 

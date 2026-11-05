@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Strata context tools",
+    "description": "The compress, decompress, search_context and strata_status tools, the /strata command and fold reminders."
+  }
+}

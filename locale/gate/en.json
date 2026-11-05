@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Strata preset gate",
+    "description": "Gives every Web / Desktop agent preset its own Strata engine and serves the composer dock status."
+  }
+}
