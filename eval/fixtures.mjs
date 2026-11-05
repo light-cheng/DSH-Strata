@@ -25,10 +25,12 @@ function logFile(random, index, lines) {
 export function buildFixtures(seed = 20261104) {
   const random = rng(seed);
   const fillFiles = 24;
-  const fillLines = 500;
+  // EVAL_FILL_LINES makes the fill task big enough to cross the window under test.
+  const fillLines = Number(process.env.EVAL_FILL_LINES) || 500;
   const logs = Array.from({ length: fillFiles }, (_, index) => logFile(random, index, fillLines));
   // One real anomaly per run, so the fill task has something to find.
-  logs[17] = logs[17].replace(/step 412 ok/, "step 412 ERROR checksum mismatch code=E-7731");
+  // The level field itself is ERROR (the task asks for level ERROR).
+  logs[17] = logs[17].replace(/^(\S+) \w+ (worker-17 job=\d+ step 412) ok\b.*$/m, "$1 ERROR $2 checksum mismatch code=E-7731");
   // Scored values only (not surrounding words), so "Port: 47821" counts.
   const recallFacts = ["RIVET-4471", "47821", "sha256:9f2c41ab", "ines.kowalski"];
   const recallLog = [
@@ -58,7 +60,8 @@ export function buildFixtures(seed = 20261104) {
     fill: {
       files: fillFiles,
       chars: logs.reduce((sum, text) => sum + text.length, 0),
-      prompt: `There are ${fillFiles} log files in ./logs (worker-00.log … worker-${fillFiles - 1}.log). Read every file one by one with your file tools (no grep, no scripts) and report each line whose level is ERROR, with its file name. Then say DONE.`,
+      prompt: `There are ${fillFiles} log files in ./logs (worker-00.log … worker-${fillFiles - 1}.log). Read every file one by one yourself in this session with your file tools (no grep, no scripts, no subagents or delegation) and report each line whose level is ERROR, with its file name. Then say DONE.`,
+      expected: ["worker-17", "E-7731"],
     },
     amnesia: {
       plant: "Remember these for later in this session: the release codename is KESTREL-19, the database replica is db-replica-7, and the on-call engineer is Amara Okafor. Reply only with OK.",

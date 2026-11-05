@@ -158,7 +158,7 @@ const SUITE_RUNNERS = {
   fill(arm, setup) {
     if (RUN) fixtures.writeFill(setup.cwd);
     const run = task(arm, setup, "", fixtures.fill.prompt);
-    return { metrics: metrics(run, setup), finished: run.status === 0 };
+    return { metrics: metrics(run, setup), finished: run.status === 0, found: score(finalText(run), fixtures.fill.expected) };
   },
   amnesia(arm, setup) {
     const plant = task(arm, setup, "", fixtures.amnesia.plant);
@@ -166,7 +166,7 @@ const SUITE_RUNNERS = {
     if (RUN) fixtures.writeFill(setup.cwd);
     const fill = task(arm, setup, id, fixtures.fill.prompt);
     const ask = task(arm, setup, id, fixtures.amnesia.question);
-    return { metrics: metrics(fill, setup), recall: score(finalText(ask), fixtures.amnesia.expected) };
+    return { metrics: metrics(fill, setup), fillFound: score(finalText(fill), fixtures.fill.expected), recall: score(finalText(ask), fixtures.amnesia.expected) };
   },
   recall(arm, setup) {
     if (RUN) fixtures.writeRecall(setup.cwd);
