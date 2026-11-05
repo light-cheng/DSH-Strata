@@ -381,3 +381,36 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 | 2026-11-04 | — | pnpm 因为不能硬链接用户的 `~/Library/pnpm/store`，自动改用 `/private/tmp/claude-501/.pnpm-store/v11` | pnpm 11.28.5（DSH 自带） |
 
 两个 profile 的设置文件（`cordis.patch.yml`）都保持 DSH 初始化时的空数组 `[]`，没有改。billion-context 没有安装。清理：删掉上面两个 `dsh-home-*` 目录和 `.pnpm-store` 即可。
+
+2026-11-05 补充：
+- `smoke` 这个 home 又跑了几次 headless 小任务，都走 magpie（见 §11.10）。
+- 真实模型评测每次在 `eval/.work/<时间>/{strata,stock}/dsh-home` 里新建 home，并从本地 `npm pack` 装 Strata。`eval/.work/` 已加进 git 忽略，清理时直接删掉整个目录即可。
+- 模型调用都走用户本机的 magpie 网关（`127.0.0.1:3425`），用 `DEEPSEEK_BASE_URL` 加 `--patch` 指过去，没有改任何 profile 文件。
+
+### 11.10 真实模型评测（2026-11-05，recall + tiers）
+
+**环境**
+- DSH Desktop 自带 CLI 0.2.1-rc.5，model 是 `workbuddy/deepseek-v4.1-flash`，经 magpie 转发；DSH 认为窗口是 1M。
+- 另一个 provider `workbuddy-ai/...-sg` 返回 503，没有用。
+- 命令：`DSH_EVAL_PATCH=<把 agent-default-model 的 model 改成 magpie id 的 patch> DEEPSEEK_BASE_URL=http://127.0.0.1:3425/v1 node eval/run.mjs --run --suite recall,tiers`。
+
+**第一轮跑出来的问题，已修，见 `37f2d1c`**
+- 源文件还在磁盘上，模型直接重新读文件，根本没有用到恢复工具。现在提问之前先把源文件删掉。
+- 窗口是 1M、会话又短，代价估算把小 fold 都推迟了，最后丢掉。这是 §4 的设计行为。但 `compress` 回复第一行写的是「本轮结束落地」，模型照着转述成「已完成」。现在推迟时第一行就写 `compress deferred, NOT applied this turn`。
+- 评测里给 Strata 设了 `STRATA_EXPECTED_REQUESTS=50` 和 `STRATA_MIN_BENEFIT_TOKENS=1000`，所以这次测的是折叠和恢复机制本身，不是落地经济学。
+
+**第二轮结果**
+
+| 套件 | 臂 | 召回 | 说明 |
+|---|---|---|---|
+| recall | strata | 4/4 | fold 落地了；源文件已删，靠 `search_context`、`decompress`（`full:true`、`toFile`）找回，然后 grep 恢复出来的文件 |
+| recall | stock | 4/4 | 1M 窗口里根本没压缩，原文一直在上下文里，所以这一项不能说明 Strata 更好 |
+| tiers | strata | 4/4 | 只落地了 2 个 T1；T2 和 T3 一次都没做成 |
+
+**还没解决**
+1. **L1 会先吃掉 L2 要折的东西。** 每轮结束时 L1 先把读文件的输出切成卡片，下一轮再让模型 fold，这段只剩几百 token，`compress` 会以「摘要不比原范围小」拒绝，或者回收太少被推迟。所以真实模型下 T2/T3 没被走到，单测覆盖了，真机还没有。可选的办法：
+   - L2 nudge 早于 L1 切卡；
+   - 允许 fold 用卡片背后存档的 token 数估算收益；
+   - 或者评测改用不会被 L1 切掉的长对话内容。
+2. **stock 臂在 1M 窗口里不压缩。** 要和 stock 拉开差距，需要 fill 或 amnesia 那种超过阈值的长任务，这两项还没跑。
+3. **评测分数只看答案里有没有关键串。** `tools` 字段记录了实际调用了哪些工具，可以用来判断是真恢复还是绕过去的。
