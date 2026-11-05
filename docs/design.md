@@ -400,6 +400,7 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 - **v0.1.1 修复。** 修复了 Web / Desktop 预设无法新建会话的问题。验证用的临时 home `/private/tmp/claude-501/dsh-home-web` 已删除。
 - **v0.2.0 浮标。** 新增输入框状态浮标，用临时 home `/private/tmp/claude-501/dsh-home-dock` 做 Web 端到端验证（走 magpie），验证后已删除。
 - **用户日常的 `desktop` profile。** 0.2.0–0.2.2 用的是 GitHub Release 的 tarball。0.3.0 起改名为 `@lightcheng/dsh-strata` 并发布到 npm；`desktop` profile 已卸掉旧名字，从 npm 装上 `@lightcheng/dsh-strata@^0.3.0`。0.3.0 的验证用临时 home（`dsh-conf-*`、`dsh-web-030`）都已删除。
+- **0.4.1（2026-11-06）。** 0.4.0 只打了标签，没发布到 npm。`desktop` profile 用 `dsh plugin --profile desktop add @lightcheng/dsh-strata@^0.4.1` 从 npm 升到 0.4.1，`package.json` 里只改了这一行依赖（`^0.3.0` → `^0.4.1`），其他插件和设置都没动。DSH Desktop 下次启动时，会对 `~/.dsh/strata/` 自动做一次存档清理（标记文件 `.scrub-runtime-context-v2`），用户已同意；重启后用户在 `/strata` 里确认 0.4.1 已接管。
 
 ### 11.10 真实模型评测（2026-11-05，recall + tiers）
 
