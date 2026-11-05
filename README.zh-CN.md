@@ -73,7 +73,7 @@ dsh plugin --profile desktop add @lightcheng/dsh-strata
 用 GitHub Release 里的预构建包（不经过 npm）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.0/lightcheng-dsh-strata-0.4.0.tgz
+dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.1/lightcheng-dsh-strata-0.4.1.tgz
 ```
 
 用本地源码：
@@ -126,7 +126,7 @@ npm test
 npm run check
 ```
 
-36 个单元测试覆盖 L1 切卡、折叠的校验与落地、T1–T3 分级、逐级 `decompress`、检索、代价估算、各预设分别接管、回退到原版引擎，以及浮标的活动记录和状态接口。`node eval/run.mjs` 打印真实模型评测计划，加 `--run` 会在 `eval/.work/` 下的独立 `DSH_HOME` 里执行。DeepSeek V4.1 Flash 的结果记录在 [`docs/design.md`](docs/design.md) §11.10。
+54 个单元测试覆盖 L1 切卡、折叠的校验与落地、T1–T3 分级、逐级 `decompress`、检索、代价估算、各预设分别接管、回退到原版引擎，以及浮标的活动记录和状态接口。`node eval/run.mjs` 打印真实模型评测计划，加 `--run` 会在 `eval/.work/` 下的独立 `DSH_HOME` 里执行。DeepSeek V4.1 Flash 的结果记录在 [`docs/design.md`](docs/design.md) §11.10。
 
 ## 隐私与数据
 
