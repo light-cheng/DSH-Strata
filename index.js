@@ -11,6 +11,7 @@ import { rotateShadow, sessionDir, shadowFileBody, shadowMaxBytes } from "./shad
 import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { StrataLayer } from "./lib/l2.js";
+import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
 import { recordCard } from "./lib/archive.js";
 
 const MARK = "Strata card.";
@@ -348,6 +349,8 @@ export default class StrataEngine extends BasicCompactionEngine {
   async finishTurn(agent) {
     const state = this.stateFor(agent);
     const signal = AbortSignal.timeout(30000);
+    const sessionId = agent.session?.id;
+    markBusy(sessionId, true);
     try {
       await agent.runMaintenance(async (agentSignal) => {
         const op = AbortSignal.any([agentSignal, signal]);
@@ -410,6 +413,7 @@ export default class StrataEngine extends BasicCompactionEngine {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.ctx.logger?.warn?.(`strata cut failed: ${message}`);
+          recordActivityError(sessionId, "L1", message);
         }
         if (!reduced) {
           this.ctx.logger?.warn?.(`strata cut did not reduce ${before}; leaving the prefix for the gate`);
@@ -422,7 +426,23 @@ export default class StrataEngine extends BasicCompactionEngine {
       this.ctx.logger?.warn?.(`strata after-turn skipped: ${message}`);
     } finally {
       state.localOnly = false;
+      markBusy(sessionId, false);
+      this.publishUsage(agent).catch(() => {});
     }
+  }
+
+  /** Dock label data: total tokens, window, folds per tier (cheap, once per turn end). */
+  async publishUsage(agent) {
+    const layer = this.strataLayer;
+    if (!layer || !agent?.session?.id) return;
+    const snap = layer.snapshot(agent);
+    recordUsage(agent.session.id, {
+      totalTokens: snap.totalTokens,
+      window: snap.window,
+      tiers: [1, 2, 3].map((tier) => snap.strata.tiers[tier]?.count || 0),
+      cards: snap.strata.card.count,
+      pending: snap.pending?.length || 0,
+    });
   }
 
   async commitSelectedSpan(agent, chunk, signal) {

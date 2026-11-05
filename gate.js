@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { configConflicts, conflictMessage, installedConflicts } from "./lib/conflicts.js";
+import { registerGuiRoutes } from "./lib/gui-routes.js";
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
 const OURS = "@light-cheng/dsh-strata";
@@ -123,5 +124,11 @@ export default class StrataGate {
       }
     }, { global: true });
     ctx.provide(GATE_SERVICE, {});
+    // Composer dock status (Web / Desktop only; a no-op without a web server).
+    let version = "";
+    try {
+      version = require("./package.json").version;
+    } catch {}
+    registerGuiRoutes(ctx, version);
   }
 }
