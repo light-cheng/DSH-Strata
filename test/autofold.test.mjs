@@ -377,3 +377,66 @@ test("auto fold converts the provider-unit need into local units (scale 1.6)", (
   const reclaim = reclaimOf(layer, agent);
   assert.ok(reclaim >= need, `local reclaim ${reclaim} covers the local need ${need}`);
 });
+
+/** Grow foldable work in small rounds until `check` returns non-null; returns the local growth at that point. */
+function growUntil(layer, agent, session, from, check, label, limit = 600) {
+  const { foldableTokens: measure } = layer.__layout;
+  for (let i = 0; i < limit; i += 1) {
+    addToolRound(session, { command: `${label} ${i}`, output: filler(`${label}-${i}`, 800) });
+    const result = check();
+    if (result) return measure(layer.layout(session)) - from;
+  }
+  return Infinity;
+}
+
+test("ratio 1.7: the nudge step and its re-arm are provider tokens; ratio 1 behaves as before", async () => {
+  const layoutModule = await import("../lib/layout.js");
+  for (const scale of [1, 1.7]) {
+    const { ctx, session, agent, layer } = setup();
+    layer.__layout = layoutModule;
+    withOverhead(ctx, () => 2000, { scale });
+    layer.settings.nudgeGrowthTokens = 8000;
+    layer.state(agent).window = 10_000_000;
+    addUser(session, "start");
+    for (let i = 0; i < 3; i += 1) addToolRound(session, { command: `seed ${i}`, output: filler(`seed-${i}`, 400) });
+    const local = () => layoutModule.foldableTokens(layer.layout(session));
+    const start = local();
+    layer.state(agent).baseline = start;
+    const first = growUntil(layer, agent, session, start, () => layer.nudge(agent), `n${scale}`);
+    const step = 8000 / scale;
+    assert.ok(first >= step && first < step + 600, `scale ${scale}: first nudge after ~${Math.round(step)} local (= 8000 provider), got ${first}`);
+    if (scale > 1) assert.ok(first < 8000, "fires before 8000 local tokens");
+    const mark = layer.state(agent).nudgedAt;
+    const half = growUntil(layer, agent, session, mark, () => layer.nudge(agent), `h${scale}`);
+    assert.ok(half >= step / 2 && half < step / 2 + 600, `scale ${scale}: re-arm after ~${Math.round(step / 2)} local, got ${half}`);
+    const text = layer.status(agent, { detail: true });
+    assert.match(text, new RegExp(`next nudge at \\+4\\.0K \\(provider; ~${(4000 / scale / 1000).toFixed(1).replace(".", "\\.")}K local at ×${scale.toFixed(2).replace(".", "\\.")}\\)`));
+  }
+});
+
+test("ratio 1.7: after an automatic fold the guard waits for 50K provider tokens of growth", async () => {
+  const layoutModule = await import("../lib/layout.js");
+  for (const scale of [1, 1.7]) {
+    const { ctx, session, agent, layer } = setup();
+    withOverhead(ctx, () => 0, { scale });
+    layer.settings.nudgeGrowthTokens = 8000;
+    conversation(session);
+    atRatio(layer, agent, session, 0.62);
+    assert.ok(layer.autoFold(agent).length >= 1);
+    await layer.flush(agent);
+    const mark = layer.state(agent).autoFoldedAt;
+    assert.ok(mark != null);
+    let grown = 0;
+    for (let i = 0; i < 600; i += 1) {
+      addToolRound(session, { command: `g${i}`, output: filler(`g-${i}`, 800) });
+      layer.state(agent).unanswered = 5;
+      layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.7);
+      grown = layoutModule.foldableTokens(layer.layout(session)) - mark;
+      const ids = layer.autoFold(agent);
+      if (ids.length) break;
+    }
+    const step = 8000 / scale;
+    assert.ok(grown >= step && grown < step + 600, `scale ${scale}: guard released after ~${Math.round(step)} local (= 8000 provider), got ${grown}`);
+    assert.match(layer.status(agent), new RegExp(`the next waits for \\+8\\.0K \\(provider; ~${(8000 / scale / 1000).toFixed(1).replace(".", "\\.")}K local at ×${scale.toFixed(2).replace(".", "\\.")}\\) foldable growth`));
+  }
+});
