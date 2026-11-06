@@ -6,7 +6,7 @@ English is the default; the Chinese version follows below.
 
 ### Unreleased
 
-- **Plugin page:** DSH's plugin page now shows a document written for it in the UI language (`docs/plugin-page.en.md`, `docs/plugin-page.zh-CN.md`, named by `meta.detail` in `locale/en.json` and `locale/zh.json`; other languages fall back to English) instead of the GitHub README with its language-switch line.
+- **Plugin page:** DSH's plugin page now shows a short document in the UI language (what Strata does, its core features and a link to the repository; `docs/plugin-page.en.md`, `docs/plugin-page.zh-CN.md`, named by `meta.detail` in `locale/en.json` and `locale/zh.json`; other languages fall back to English) instead of the GitHub README with its language-switch line.
 
 - **Reminders reach the model inside long turns:** the fold reminder used to wait for the next user message, so a 40-step turn saw at most one. It now fires on any step once foldable context has grown by 50K, and an unanswered reminder comes back after another 25K (12.5K above 75 % of the window).
 - **Automatic digests:** when the model leaves two reminders unanswered and context is above 50 % of the window (or above 60 % regardless), Strata folds the oldest work at turn end without calling the model, until the foldable part is about 30 % of the window minus fixed overhead (system prompt, tool definitions; shown in `strata_status`); the next digest waits for another 50K of foldable work or 75 %. A digest keeps user messages, the start of assistant replies, every tool call with its path or command and first result line, and errors; it is tagged `auto=1`, archived and restorable like any fold, and goes through the same cost check. `strata_status` counts digests separately; the dock shows `Auto fold`; the `strata/fold-landed` event carries `auto: true`. All thresholds have `STRATA_*` knobs; `STRATA_AUTO_FOLD=off` disables it.
@@ -102,7 +102,7 @@ Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recov
 
 ### 未发布
 
-- **插件页面：** DSH 插件页面现在按界面语言显示专门为它写的文档（`docs/plugin-page.en.md`、`docs/plugin-page.zh-CN.md`，由 `locale/en.json` 和 `locale/zh.json` 里的 `meta.detail` 指定；其他语言回退到英文），不再显示带语言切换行的 GitHub README。
+- **插件页面：** DSH 插件页面现在按界面语言显示一份简短文档（Strata 做什么、核心功能和仓库链接；`docs/plugin-page.en.md`、`docs/plugin-page.zh-CN.md`，由 `locale/en.json` 和 `locale/zh.json` 里的 `meta.detail` 指定；其他语言回退到英文），不再显示带语言切换行的 GitHub README。
 - **长轮次里也能收到提醒：** 折叠提醒不再只在有新用户消息的步骤出现；可折叠上下文每增长 50K 就会在任意步骤触发，没被理会的提醒在再增长 25K 后重新出现（上下文超过窗口 75 % 时为 12.5K）。
 - **自动摘要：** 模型连续两次没理会提醒且上下文超过 50 %（或不论提醒、超过 60 %）时，Strata 在轮次结束时从最旧的工作折起，直到可折叠部分约为（窗口 − 固定开销）的 30 %（固定开销是系统提示、工具定义等，`strata_status` 单独显示；下一次要再积累 50K 可折叠内容或超过 75 %），写成不经模型的抽取式摘要（用户消息、助手文字开头、每个工具调用及其路径或命令和结果首行、错误）。它和模型折叠一样可以用 decompress 和 search_context 还原，走同一个成本检查，头部标记 `auto=1`；`strata_status` 单独统计，面板显示“自动折叠”，`strata/fold-landed` 事件带 `auto: true`。所有阈值都有 `STRATA_*` 设置，`STRATA_AUTO_FOLD=off` 关闭。
 
