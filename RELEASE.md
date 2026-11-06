@@ -4,6 +4,10 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### Unreleased
+
+- **Plugin page:** DSH's plugin page now shows a document written for it in the UI language (`docs/plugin-page.en.md`, `docs/plugin-page.zh-CN.md`, named by `meta.detail` in `locale/en.json` and `locale/zh.json`; other languages fall back to English) instead of the GitHub README with its language-switch line.
+
 ### v0.4.1 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
 0.4.0 was tagged but never published to npm, so 0.4.1 is the first npm release of the DSH-Mem0 interop work. It contains everything listed under 0.4.0:
@@ -92,6 +96,10 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### 未发布
+
+- **插件页面：** DSH 插件页面现在按界面语言显示专门为它写的文档（`docs/plugin-page.en.md`、`docs/plugin-page.zh-CN.md`，由 `locale/en.json` 和 `locale/zh.json` 里的 `meta.detail` 指定；其他语言回退到英文），不再显示带语言切换行的 GitHub README。
 
 ### v0.4.1 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
