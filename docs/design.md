@@ -496,3 +496,5 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 现在：固定开销按启发式单位算（表面上的 system 行 + DSH `contextBreakdown` 投影里的 `toolsTokens`，经 `ctx.sessionProjections` 读取），再乘以本会话的比例 `total / (surface + tools)`（限制在 0.25–8）。拿不到投影时，用本会话见过的最小 `total − surface` 当作工具（服务商单位），比例只按表面算。自动摘要的 need 是服务商单位，换算成本地单位（÷ 比例）再和各段的回收量比。比例偏离 1 超过 5% 时，`strata_status` 在固定开销那行注明。`STRATA_MEASURE_TRACE=<文件>` 在每次轮末写一行测量记录（默认不写）。
 
 **步长按服务商 token（2026-11-07）。** 提醒步长 `STRATA_NUDGE_GROWTH_TOKENS`（含 ½ / ¼ 重新提醒）和自动摘要后的等待量，现在都按服务商 token 计：比较前把设置值除以上面的比例，换成本地估算单位。`strata_status` 写成 `+50.0K (provider; ~29.2K local at ×1.71)`。L1 的 32K 上限和代价估算不变。
+
+**挂起的模型折叠不再挡住自动摘要（2026-11-07）。** Windows 复测（8cb8506）：69.7% 也没有自动摘要。`autoFold` 开头有 `if (state.pending.length) return []`；模型的 compress 被代价检查推迟时会挂起最多 `STRATA_MAX_DEFER_TURNS`（3）轮，期间每个轮末都直接返回。现在挂起折叠的回收量计入目标，自动摘要只折它们范围以外的部分（按挂起范围切开、两端保持工具调用配对），和它们同批过代价检查。每个轮末的结果记在 `strata_status` 的 `Automatic fold at last turn end: …` 一行（landed / skipped 原因 / 未落地原因 / error）。

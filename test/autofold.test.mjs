@@ -91,9 +91,17 @@ test("triggers: below 50% never; 50–60% only after 2 unanswered nudges; 60% re
   conversation(busy.session);
   atRatio(busy.layer, busy.agent, busy.session, 0.9);
   const run = busy.layer.snapshot(busy.agent).runs[0];
-  assert.match(busy.layer.propose(busy.agent, `${run.startRef}–${run.endRef} config\nMigrated the config; PORT=8443.`), /pending T1 fold/);
+  // The model folds only the first two tool rounds of the run.
+  const small = run.rows.filter((row) => row.closeOk)[2];
+  assert.match(busy.layer.propose(busy.agent, `${run.startRef}–${small.ref} config\nMigrated the config; PORT=8443.`), /pending T1 fold/);
   assert.equal(busy.layer.state(busy.agent).unanswered, 0, "a model compress answers the nudges");
-  assert.deepEqual(busy.layer.autoFold(busy.agent), [], "the model's own pending fold wins");
+  // A pending model fold no longer blocks automatic folds: it counts toward the target,
+  // and automatic folds go around its range.
+  const modelSeqs = new Set(busy.layer.state(busy.agent).pending[0].seqs);
+  const autoIds = busy.layer.autoFold(busy.agent);
+  assert.ok(autoIds.length >= 1, "still far above the target: automatic folds join the batch");
+  for (const fold of busy.layer.state(busy.agent).pending.filter((item) => item.auto)) assert.ok(fold.seqs.every((seq) => !modelSeqs.has(seq)), "never overlaps the model's fold");
+  assert.match(busy.layer.status(busy.agent), /Automatic fold at last turn end: proposed f\d+/);
 });
 
 test("nudge re-arm: an unanswered nudge repeats after half a step, a quarter above forcePct", async () => {
@@ -439,4 +447,69 @@ test("ratio 1.7: after an automatic fold the guard waits for 50K provider tokens
     assert.ok(grown >= step && grown < step + 600, `scale ${scale}: guard released after ~${Math.round(step)} local (= 8000 provider), got ${grown}`);
     assert.match(layer.status(agent), new RegExp(`the next waits for \\+8\\.0K \\(provider; ~${(8000 / scale / 1000).toFixed(1).replace(".", "\\.")}K local at ×${scale.toFixed(2).replace(".", "\\.")}\\) foldable growth`));
   }
+});
+
+test("user's Windows shape: early model fold, a deferred model compress, ratio 1.96 → a digest by the turn that crosses 60%", async () => {
+  const { ctx, session, agent, layer } = setup();
+  withOverhead(ctx, () => 15300, { scale: 1.96 });
+  layer.state(agent).window = 1_000_000;
+  let day = 0;
+  const turn = () => {
+    addUser(session, `read the next five logs (${day})`);
+    for (let i = 0; i < 5; i += 1, day += 1) addToolRound(session, { name: "read", command: `logs/day${day}.log`, output: filler(`2026 E0${day} line`, 44800) });
+    addAssistantText(session, "done");
+  };
+  const finish = async () => {
+    layer.autoFold(agent);
+    return layer.flush(agent);
+  };
+  for (let t = 0; t < 4; t += 1) {
+    turn();
+    await finish();
+  }
+  // The model folds the early work itself (T1 f1), as in the user's session.
+  const early = layer.layout(session).rows.filter((row) => row.foldable);
+  const half = early.findLast((row) => row.closeOk && row.index < early.length / 2);
+  assert.match(layer.propose(agent, `${early[0].ref}–${half.ref} early logs\nDays 0-9 read; codes noted.`), /pending T1 fold/);
+  assert.equal((await layer.flush(agent)).landed.length, 1);
+  turn();
+  // A later small model compress is deferred by the cost check and stays pending.
+  const rows = layer.layout(session).rows.filter((row) => row.foldable && row.stratum === "raw");
+  const one = rows.find((row) => row.role === "assistant" && row.toolCalls > 0);
+  const result = rows[rows.indexOf(one) + 1];
+  layer.settings.minBenefitTokens = 100_000;
+  assert.match(layer.propose(agent, `${one.ref}–${result.ref} one log\nday read.`), /deferred, NOT applied/);
+  layer.settings.minBenefitTokens = 500;
+  let landedAuto = null;
+  for (let t = 0; t < 3 && !landedAuto; t += 1) {
+    turn();
+    const ratio = layer.layout(session).totalTokens / 1_000_000;
+    const before = new Set(layer.state(agent).pending.map((fold) => fold.id));
+    const ids = layer.autoFold(agent);
+    const flushed = await layer.flush(agent);
+    if (ratio >= 0.6) {
+      assert.ok(before.size >= 1 || t > 0, "a model fold was pending");
+      assert.ok(ids.length >= 1, `turn crossing 60% (${(ratio * 100).toFixed(1)}%) proposes a digest: ${layer.state(agent).lastAutoFold?.outcome}`);
+      landedAuto = flushed.landed.filter((id) => ids.includes(id));
+      assert.ok(landedAuto.length >= 1, `and lands it: ${JSON.stringify(flushed)}`);
+    }
+  }
+  assert.ok(landedAuto, "context crossed 60% within three turns");
+  assert.match(layer.status(agent, { detail: true }), new RegExp(`Automatic fold at last turn end: landed ${landedAuto[0]}`));
+});
+
+test("last turn-end outcome: below 50%, waiting for growth, and errors are reported", async () => {
+  const { session, agent, layer } = setup();
+  conversation(session);
+  atRatio(layer, agent, session, 0.4);
+  layer.autoFold(agent);
+  assert.match(layer.status(agent), /Automatic fold at last turn end: skipped \(40%: below 50%\)\./);
+  atRatio(layer, agent, session, 0.55);
+  layer.state(agent).unanswered = 1;
+  layer.autoFold(agent);
+  assert.match(layer.status(agent), /skipped \(55%: below 60% and 1 of 2 unanswered nudges\)/);
+  atRatio(layer, agent, session, 0.62);
+  layer.state(agent).autoFoldedAt = layer.snapshot(agent).foldable;
+  layer.autoFold(agent);
+  assert.match(layer.status(agent), /skipped \(waiting for \+50\.0K \(provider; ~50\.0K local at ×1\.00\) foldable growth since the last digest; \+0 local so far\)/);
 });
