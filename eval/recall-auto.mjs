@@ -230,7 +230,8 @@ for (const arm of ARMS) {
     log.push(turn(h, prompt));
     console.log(`${arm}-${REP} plant ${log.length}: exit ${log.at(-1).status}, ${log.at(-1).usage.length} requests, tools ${log.at(-1).tools.join(" ")}`);
   }
-  const foldEnv = arm === "auto" ? { ...FOLD_ENV, STRATA_AUTO_FOLD: "on", STRATA_AUTO_FOLD_FORCE_PCT: "0.01", STRATA_AUTO_FOLD_TARGET_PCT: "0.01" } : arm === "model" ? FOLD_ENV : {};
+  // auto: no forced nudge (the model would fold itself and auto folds yield to model folds); the cost check passes on a long expected session instead.
+  const foldEnv = arm === "auto" ? { STRATA_KEEP_ROUNDS: "1", STRATA_MIN_BENEFIT_TOKENS: "1", STRATA_MIN_BENEFIT_RATIO: "0.000001", STRATA_EXPECTED_REQUESTS: "1000", STRATA_AUTO_FOLD: "on", STRATA_AUTO_FOLD_FORCE_PCT: "0.01", STRATA_AUTO_FOLD_TARGET_PCT: "0.01" } : arm === "model" ? FOLD_ENV : {};
   log.push(turn(h, FOLD_PROMPT[arm], foldEnv));
   const before = log.at(-2).usage.at(-1);
   const after = log.at(-1).usage.at(-1);
