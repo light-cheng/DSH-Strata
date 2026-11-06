@@ -394,7 +394,9 @@ export default class StrataEngine extends BasicCompactionEngine {
           try {
             layer.autoFold(agent);
           } catch (error) {
-            this.ctx.logger?.warn?.(`strata auto fold skipped: ${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            layer.state(agent).lastAutoFold = { at: Date.now(), outcome: `error: ${message.slice(0, 200)}` };
+            this.ctx.logger?.warn?.(`strata auto fold skipped: ${message}`);
           }
           await layer.flush(agent, op);
           layer.traceMeasure(agent, "after-flush");
