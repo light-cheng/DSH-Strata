@@ -480,6 +480,17 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 
 用户的 Windows 会话（0.4.1）总量 290.5K，其中 raw + card 只有约 167K，其余约 123K 是系统提示、工具定义、技能列表和运行时上下文，折叠动不了。原来的目标是「总量 ≤ 30% × 窗口」，所以开销大的会话会折过头；开销加受保护尾部接近目标时 `need` 永远到不了 0，每轮都把剩下的可折叠内容再折一遍（成本检查只能压住一部分）。
 
-- **固定开销** = DSH 的 `totalTokens − surfaceTokens`（tokenMeter 报的表面之和；拿不到时用各行之和）+ 表面上的 system 行。`strata_status` 和 `/strata detail` 单独一行显示。
+- **固定开销**：最初算成 DSH 的 `totalTokens − surfaceTokens` + 表面上的 system 行，这是错的，见下面「校准」。`strata_status` 和 `/strata detail` 单独一行显示。
 - **目标** = 固定开销 + `STRATA_AUTO_FOLD_TARGET_PCT` × (窗口 − 固定开销)。触发条件（≥50% 且有未回应提醒 / ≥60%）仍按真实总量。
 - **不空转：** 一次自动摘要落地后，要等可折叠量再涨 `STRATA_NUDGE_GROWTH_TOKENS`（或总量 ≥ 75%）才会再折；剩下的只有固定、受保护或已折叠的内容、折完也到不了目标时，不提议（75% 以上仍折能折的）。
+
+**校准（2026-11-07）。** 用户在 Windows 上测 main（d346af6）时，「固定开销」每轮涨约 40K。原因：DSH 的 `totalTokens` 以服务商上一次真实的 prompt 用量为锚（加启发式增量），而 `surfaceTokens` 和每个节点的 tokens 都是 chars/4 启发式。日志、数字、时间戳在 DeepSeek 上的实际 token 远多于 chars/4，所以 `total − surface` 里装的是每条消息的估算误差，随读入内容一起涨。各行之和与 `surfaceTokens` 完全相等（节点没有漏算的部分），也没有重复计数。复现（`eval/measure-repro.mjs`，magpie，每轮 5 个约 11K 的日志）：
+
+| 轮 | total | surface | 工具（启发式） | 旧「固定」 | 比例 | 新「固定」 |
+|---|---|---|---|---|---|---|
+| 1 | 106.2K | 59.1K | 5.5K | 48.0K | 1.645 | 10.5K |
+| 2 | 165.5K | 92.9K | 5.5K | 73.6K | 1.683 | 10.7K |
+| 3 | 225.7K | 127.5K | 5.5K | 99.0K | 1.697 | 10.8K |
+| 4 | 305.0K | 172.8K | 5.5K | 133.0K | 1.710 | 10.9K |
+
+现在：固定开销按启发式单位算（表面上的 system 行 + DSH `contextBreakdown` 投影里的 `toolsTokens`，经 `ctx.sessionProjections` 读取），再乘以本会话的比例 `total / (surface + tools)`（限制在 0.25–8）。拿不到投影时，用本会话见过的最小 `total − surface` 当作工具（服务商单位），比例只按表面算。自动摘要的 need 是服务商单位，换算成本地单位（÷ 比例）再和各段的回收量比。比例偏离 1 超过 5% 时，`strata_status` 在固定开销那行注明。`STRATA_MEASURE_TRACE=<文件>` 在每次轮末写一行测量记录（默认不写）。

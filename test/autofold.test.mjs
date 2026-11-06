@@ -246,9 +246,13 @@ test("digest: user words without system reminders, read bodies skipped, shell er
 });
 
 /** DSH's meter: totalTokens includes what is outside the surface (tool definitions …); surfaceTokens is the surface sum. */
-function withOverhead(ctx, overhead) {
+function withOverhead(ctx, overhead, { scale = 1, breakdown = true } = {}) {
   const base = ctx.tokenMeter;
-  ctx.tokenMeter = { ...base, measure: (s) => { const m = base.measure(s); return { ...m, surfaceTokens: m.totalTokens, totalTokens: m.totalTokens + overhead() }; } };
+  ctx.tokenMeter = { ...base, measure: (s) => { const m = base.measure(s); return { ...m, surfaceTokens: m.totalTokens, totalTokens: Math.round((m.totalTokens + overhead()) * scale) }; } };
+  if (breakdown) {
+    const get = ctx.get?.bind(ctx);
+    ctx.get = (name) => (name === "sessionProjections" ? { snapshot: () => ({ values: { contextBreakdown: { systemTokens: 0, toolsTokens: overhead(), messageTokens: 0 } } }) } : get?.(name));
+  }
 }
 
 const reclaimOf = (layer, agent) => layer.state(agent).pending.reduce((sum, fold) => sum + fold.tokens - fold.foldTokens, 0);
@@ -333,4 +337,43 @@ test("no proposal when everything left is fixed or protected; the force line sti
   // Above 75% it still folds what it can.
   layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.8);
   assert.ok(layer.autoFold(agent).length >= 1, "forced above 75%");
+});
+
+test("fixed overhead stays flat while raw grows, though the provider counts dense text 1.6× the local estimate", () => {
+  for (const breakdown of [true, false]) {
+    const { ctx, session, agent, layer } = setup();
+    const tools = 4000;
+    withOverhead(ctx, () => tools, { scale: 1.6, breakdown });
+    addUser(session, "Read the five day logs each turn.");
+    layer.state(agent).window = 1_000_000;
+    const first = layer.layout(session);
+    const fixedSeen = [first.fixedTokens];
+    for (let turn = 0; turn < 5; turn += 1) {
+      addUser(session, `turn ${turn}`);
+      for (let i = 0; i < 5; i += 1) addToolRound(session, { name: "read", command: `logs/day0${i}.log`, output: filler(`2026-11-0${i} E0${turn}${i}38 12:00:0${i}`, 44000) });
+      fixedSeen.push(layer.layout(session).fixedTokens);
+    }
+    const last = layer.layout(session);
+    const surface = last.surfaceTokens;
+    // The old rule (total − surface) grows with every read: 0.6 × surface + 1.6 × tools.
+    assert.ok(last.totalTokens - surface > fixedSeen[0] * 5, `old rule would have grown (${last.totalTokens - surface})`);
+    const spread = Math.max(...fixedSeen) - Math.min(...fixedSeen);
+    assert.ok(spread <= fixedSeen[0] * 0.1, `${breakdown ? "with" : "without"} breakdown: fixed stayed flat (${fixedSeen.join(", ")})`);
+    if (breakdown) assert.ok(Math.abs(last.fixedTokens - 1.6 * tools) < 50, `fixed = scale × tools (${last.fixedTokens})`);
+    assert.ok(Math.abs(last.scale - 1.6) < 0.05, `scale ${last.scale}`);
+    assert.match(layer.status(agent), /Provider counts run ×1\.6\d the local estimate/);
+  }
+});
+
+test("auto fold converts the provider-unit need into local units (scale 1.6)", () => {
+  const { ctx, session, agent, layer } = setup();
+  conversation(session);
+  withOverhead(ctx, () => 0, { scale: 1.6 });
+  const layout = layer.layout(session);
+  const window = Math.round(layout.totalTokens / 0.62);
+  layer.state(agent).window = window;
+  const need = (layout.totalTokens - 0.3 * window) / 1.6;
+  assert.ok(layer.autoFold(agent).length >= 1);
+  const reclaim = reclaimOf(layer, agent);
+  assert.ok(reclaim >= need, `local reclaim ${reclaim} covers the local need ${need}`);
 });
