@@ -244,3 +244,93 @@ test("digest: user words without system reminders, read bodies skipped, shell er
   assert.match(text, /= ERROR connecting \.\.\. \[\d+ lines, exit 1\] \| ERROR 1045 \(28000\): Access denied for user 'svc'@'10\.4\.2\.9'/);
   assert.match(text, /= all good, no Error here \[\d+ lines\]$/m);
 });
+
+/** DSH's meter: totalTokens includes what is outside the surface (tool definitions …); surfaceTokens is the surface sum. */
+function withOverhead(ctx, overhead) {
+  const base = ctx.tokenMeter;
+  ctx.tokenMeter = { ...base, measure: (s) => { const m = base.measure(s); return { ...m, surfaceTokens: m.totalTokens, totalTokens: m.totalTokens + overhead() }; } };
+}
+
+const reclaimOf = (layer, agent) => layer.state(agent).pending.reduce((sum, fold) => sum + fold.tokens - fold.foldTokens, 0);
+
+test("normal case: no overhead, target is 30% of the window; status shows fixed overhead", () => {
+  const { session, agent, layer } = setup();
+  conversation(session);
+  const total = atRatio(layer, agent, session, 0.62);
+  const window = layer.state(agent).window;
+  assert.equal(layer.layout(session).fixedTokens, 0);
+  assert.ok(layer.autoFold(agent).length >= 1);
+  assert.ok(reclaimOf(layer, agent) >= total - window * 0.3 || layer.state(agent).pending.length >= 2, "folds toward 30% of the window");
+  assert.match(layer.status(agent), /Fixed overhead \(system prompt, tool definitions and similar; never folded\): ~0 \(0%\)/);
+  assert.match(layer.status(agent, { detail: true }), /Fixed overhead/);
+});
+
+test("high overhead (~40% of the window): target counts only the foldable part, and no refold without new growth", async () => {
+  const { ctx, session, agent, layer } = setup();
+  conversation(session);
+  const surface = layer.layout(session).totalTokens;
+  // total = surface + 0.4 W at 65% → W = surface / 0.25.
+  const window = Math.round(surface / 0.25);
+  layer.state(agent).window = window;
+  const overhead = Math.round(window * 0.4);
+  withOverhead(ctx, () => overhead);
+  const layout = layer.layout(session);
+  assert.equal(layout.fixedTokens, overhead);
+  assert.match(layer.status(agent), new RegExp(`Fixed overhead .*: ~[\\d.]+K \\(40%\\)`));
+  const target = overhead + 0.3 * (window - overhead);
+  const need = layout.totalTokens - target;
+  const ids = layer.autoFold(agent);
+  assert.ok(ids.length >= 1, "due at 65%");
+  const reclaim = reclaimOf(layer, agent);
+  assert.ok(reclaim >= need, `reaches the target (${reclaim} >= ${need})`);
+  // The old rule (30% of the whole window) would have needed far more.
+  const oldNeed = layout.totalTokens - 0.3 * window;
+  assert.ok(need < oldNeed / 3, `new need ${need} vs old ${oldNeed}`);
+  assert.equal(ids.length, 1, "one run is enough; the old rule would have folded both");
+  const landed = await layer.flush(agent);
+  assert.deepEqual(landed.landed.sort(), [...ids].sort());
+  assert.ok(layer.state(agent).autoFoldedAt != null);
+  // Next turns: still above 60% because of the overhead, little new work → nothing proposed.
+  for (let turn = 0; turn < 3; turn += 1) {
+    addUser(session, `small follow-up ${turn}`);
+    // Some new work, but less than a nudge step (50K): enough to put the session back above the target.
+    for (let i = 0; i < 4; i += 1) addToolRound(session, { command: `echo ${turn}.${i}`, output: filler(`t${turn}-${i}`, 4000) });
+    layer.state(agent).unanswered = 5;
+    // Keep the session above the 60% trigger (and below 75%), as a high-overhead session sits.
+    layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.7);
+    assert.deepEqual(layer.autoFold(agent), [], `turn ${turn}: no refold`);
+    assert.equal(layer.state(agent).pending.length, 0);
+  }
+  // The guard is what stops it: without the record of the last automatic fold it would refold.
+  const mark = layer.state(agent).autoFoldedAt;
+  layer.state(agent).autoFoldedAt = null;
+  assert.ok(layer.autoFold(agent).length >= 1, "without the guard the remaining runs would be refolded");
+  layer.state(agent).pending.length = 0;
+  layer.state(agent).autoFoldedAt = mark;
+  // New work of a nudge step re-enables it.
+  for (let i = 0; layer.layout(session).rows.reduce((n, r) => n + (r.foldable ? r.tokens : 0), 0) - mark < layer.settings.nudgeGrowthTokens && i < 400; i += 1) addToolRound(session, { command: `grow ${i}`, output: filler(`g${i}`, 4000) });
+  layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.7);
+  assert.ok(layer.autoFold(agent).length >= 1, "after +nudgeGrowthTokens it folds again");
+});
+
+test("no proposal when everything left is fixed or protected; the force line still folds", () => {
+  const { ctx, session, agent, layer } = setup();
+  conversation(session);
+  // A large protected tail (the live task's last rounds).
+  for (let i = 0; i < 3; i += 1) addToolRound(session, { command: `cat big${i}`, output: filler(`big-${i}`, 24000) });
+  const layout0 = layer.layout(session);
+  const foldable = layout0.rows.reduce((sum, row) => sum + (row.foldable ? row.tokens : 0), 0);
+  const kept = layout0.totalTokens - foldable;
+  // At 70% (< 75%) with some overhead, even folding every foldable row cannot reach the target.
+  const window = Math.round(layout0.totalTokens / 0.6);
+  layer.state(agent).window = window;
+  const overhead = Math.round(window * 0.7) - layout0.totalTokens;
+  withOverhead(ctx, () => overhead);
+  const target = overhead + 0.3 * (window - overhead);
+  assert.ok(overhead + kept > target, "setup: unreachable target");
+  layer.state(agent).unanswered = 5;
+  assert.deepEqual(layer.autoFold(agent), [], "unreachable below the force line");
+  // Above 75% it still folds what it can.
+  layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.8);
+  assert.ok(layer.autoFold(agent).length >= 1, "forced above 75%");
+});
