@@ -494,3 +494,5 @@ benefit = 回收量 × 命中单价 × 预计剩余请求数
 | 4 | 305.0K | 172.8K | 5.5K | 133.0K | 1.710 | 10.9K |
 
 现在：固定开销按启发式单位算（表面上的 system 行 + DSH `contextBreakdown` 投影里的 `toolsTokens`，经 `ctx.sessionProjections` 读取），再乘以本会话的比例 `total / (surface + tools)`（限制在 0.25–8）。拿不到投影时，用本会话见过的最小 `total − surface` 当作工具（服务商单位），比例只按表面算。自动摘要的 need 是服务商单位，换算成本地单位（÷ 比例）再和各段的回收量比。比例偏离 1 超过 5% 时，`strata_status` 在固定开销那行注明。`STRATA_MEASURE_TRACE=<文件>` 在每次轮末写一行测量记录（默认不写）。
+
+**步长按服务商 token（2026-11-07）。** 提醒步长 `STRATA_NUDGE_GROWTH_TOKENS`（含 ½ / ¼ 重新提醒）和自动摘要后的等待量，现在都按服务商 token 计：比较前把设置值除以上面的比例，换成本地估算单位。`strata_status` 写成 `+50.0K (provider; ~29.2K local at ×1.71)`。L1 的 32K 上限和代价估算不变。
