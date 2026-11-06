@@ -390,12 +390,14 @@ export default class StrataEngine extends BasicCompactionEngine {
         try {
           // Model-free folds when the model leaves nudges unanswered (they land in the same flush).
           await layer.resolveWindow(agent, op);
+          layer.traceMeasure(agent, "turn-end");
           try {
             layer.autoFold(agent);
           } catch (error) {
             this.ctx.logger?.warn?.(`strata auto fold skipped: ${error instanceof Error ? error.message : String(error)}`);
           }
           await layer.flush(agent, op);
+          layer.traceMeasure(agent, "after-flush");
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.ctx.logger?.warn?.(`strata fold flush skipped: ${message}`);
