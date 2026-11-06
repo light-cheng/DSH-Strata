@@ -221,3 +221,25 @@ test("engine turn end runs the automatic fold before the flush", async () => {
   await engine.finishTurn(agent);
   assert.ok(autoRows(layer, session).length >= 1);
 });
+
+test("digest: user words without system reminders, read bodies skipped, shell errors kept", () => {
+  const { agent, session, layer } = setup();
+  addUser(session, `<system-reminder>${filler("skills listing", 2000)}</system-reminder>\nAudit note: the backup lives at /srv/backups/heron.tar.`);
+  addToolRound(session, { name: "read", command: "config/deploy.yaml", output: `<path>/ws/config/deploy.yaml</path>\n<type>file</type>\n<content>\n1: # deploy\n2: cache_path: /opt/q\n${filler("3: x", 6000)}\n</content>` });
+  addToolRound(session, { command: "python3 tools/verify.py", output: `verifying 64 blocks\n[stderr]\nTraceback (most recent call last):\n  File "verify.py", line 4, in <module>\nValueError: checksum mismatch for block 0x3fa2\n[exit code: 1]` });
+  addToolRound(session, { command: "python3 tools/check_db.py", output: `connecting ...\n[stderr]\nERROR 1045 (28000): Access denied for user 'svc'@'10.4.2.9'\n[exit code: 1]` });
+  addToolRound(session, { command: "cat ok.txt", output: `all good, no Error here\n${filler("ok", 4000)}` });
+  addAssistantText(session, "Done.");
+  addUser(session, "Next task.");
+  for (let i = 0; i < 3; i += 1) addToolRound(session, { command: `cat n${i}`, output: filler(`n${i}`, 400) });
+  atRatio(layer, agent, session, 0.62);
+  assert.ok(layer.autoFold(agent).length >= 1);
+  const text = layer.state(agent).pending.map((fold) => fold.content || fold.summary || "").join("\n");
+  assert.match(text, /\[user s\d+\] Audit note: the backup lives at \/srv\/backups\/heron\.tar\./);
+  assert.doesNotMatch(text, /skills listing/);
+  assert.match(text, /= 1: # deploy \[\d+ lines\]/);
+  assert.doesNotMatch(text, /<path>/);
+  assert.match(text, /= ERROR verifying 64 blocks \[exit 1\] \| ValueError: checksum mismatch for block 0x3fa2/);
+  assert.match(text, /= ERROR connecting \.\.\. \[exit 1\] \| ERROR 1045 \(28000\): Access denied for user 'svc'@'10\.4\.2\.9'/);
+  assert.match(text, /= all good, no Error here$/m);
+});
