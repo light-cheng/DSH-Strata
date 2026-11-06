@@ -45,7 +45,9 @@
     "RELEASE.md",
     "icon.svg",
     "assets/icon.png",
-    "locale"
+    "locale",
+    "docs/plugin-page.en.md",
+    "docs/plugin-page.zh-CN.md"
   ],
   "scripts": {
     "test": "node --test 'test/*.mjs'",
