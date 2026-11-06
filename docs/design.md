@@ -303,7 +303,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 | `agent.runMaintenance` | ✅ 存在，原版 `compactNow` 也在里面跑。fold 落地和 L1 小切都在 live-compact 原有的 `finishTurn` 这一次维护里完成（先 L2 后 L1） |
 | 工具执行上下文 | ✅ `tool.execute(args, exec)`，`exec.agent.session` 可用 |
 | 命令 | ✅ `ctx.commands.register({ definitionId, name, description, input?, handler })`，`handler(invocation)` 拿到 `invocation.agent` 和 `rawInput` |
-| 提醒（nudge）通道 | ⚠️ 文档里没写怎么注入。实际用的是 `agent/pre-step` waterfall：在 `decision.messages` 末尾追加一条 `createUserMessage`（DSH 自己切换模型时就这样追加提示）。**只在这一步本来就有新用户消息进入时追加**，空步不加，避免改变 DSH 的步调度语义。所以单轮很长的 headless 任务，中途不会收到提醒，下一轮开始才会。来源写成 `{ kind: "strata", form: "notice" }`，这个自定义 kind 没有在持久化校验里验证过，真机要看一眼 |
+| 提醒（nudge）通道 | ⚠️ 文档里没写怎么注入。实际用的是 `agent/pre-step` waterfall：在 `decision.messages` 末尾追加一条 `createUserMessage`（DSH 自己切换模型时就这样追加提示）。最初只在这一步本来就有新用户消息进入时追加；现在（22957eb 之后）任意步骤都可以追加，所以单轮很长的任务中途也会收到提醒。没理会的提醒在再增长 ½ 步长后重新出现，75% 以上为 ¼ 步长；连续两次没理会且超过 50%（或超过 60%）时，轮次结束时由 Strata 自己写抽取式自动摘要（`auto=1`，见 README「自动摘要」）。来源写成 `{ kind: "strata", form: "notice" }`，这个自定义 kind 没有在持久化校验里验证过，真机要看一眼 |
 | 缓存命中 | ✅ `assistant/message` 事件的 `data.usage`：`inputTokens` 是未命中部分，`cacheReadTokens` 是命中部分 |
 | 上下文窗口 | ✅ `session.requestHeader().config.{provider,model}` + `ctx.llm.resolveModelInfo(...).context.contextWindow`；拿不到时用 `STRATA_CONTEXT_WINDOW`（默认 1M） |
 | cordis 可选依赖 | ⚠️ cordis 没有 optional inject。工具行必需 `tools` + `compaction`；`commands`、`systemPrompt` 用嵌套的 `ctx.inject([...])`，缺了也不影响工具 |
@@ -313,7 +313,7 @@ DeepSeek 的缓存按前缀命中。规则只有一句：**改动点越靠后，
 ### 11.2 待定问题的处理
 
 - **Q1 引用 id**：用 DSH 事件 seq，显示成 `s00123`。**不往消息里加标签**（Q2 选「不加」）：模型通过 `strata_status` 看到可折叠区间的起止 ref（`detail:true` 列出每条），提醒消息里也带最大的三段。这样消息字节不变，不影响缓存。
-- **Q3 L1 停止线**：改成按比例 `窗口 × STRATA_L1_STOP_RATIO`（默认 0.65）。L2 没有单独的停止线，75% 以上每次有新输入都提醒、并且无视代价直接落地；再往上交给 L∞（0.8 + headroom）。
+- **Q3 L1 停止线**：改成按比例 `窗口 × STRATA_L1_STOP_RATIO`（默认 0.65）。L2 没有单独的停止线，75% 以上提醒按 ¼ 步长重新出现、并且无视代价直接落地；再往上交给 L∞（0.8 + headroom）。
 - **Q4 fork / 子会话**：没做。存档只按当前 session id 找。
 - **Q5 回退 / 编辑**：待落地的 fold 记的是 seq 列表；落地前逐个重新校验（节点还在、顺序不变、仍是 raw/card），变了就丢弃并记日志，不会落到错的位置。L1 这一刀如果和待落地的 fold 重叠，这一轮不切。
 - **多级（T1–T3）**：已按 55b37db 的范围实现，见 §11.6。

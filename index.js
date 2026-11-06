@@ -388,6 +388,13 @@ export default class StrataEngine extends BasicCompactionEngine {
         const beforeLayout = layer.layout(agent.session);
         const changeMark = layer.state(agent).changes.length;
         try {
+          // Model-free folds when the model leaves nudges unanswered (they land in the same flush).
+          await layer.resolveWindow(agent, op);
+          try {
+            layer.autoFold(agent);
+          } catch (error) {
+            this.ctx.logger?.warn?.(`strata auto fold skipped: ${error instanceof Error ? error.message : String(error)}`);
+          }
           await layer.flush(agent, op);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

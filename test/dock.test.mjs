@@ -85,7 +85,10 @@ test("dock client: events landing between two polls play the most significant on
   let mod;
   const window = { __ModuleLoader__: { load: ({ factory }) => { mod = factory(() => ({ createElement() {}, useEffect() {}, useLayoutEffect() {}, useRef() {}, useState() {} })); } } };
   runInNewContext(readFileSync(new URL("../client.js", import.meta.url), "utf8"), { window });
-  const { pickEvent } = mod.__test;
+  const { pickEvent, eventLabel } = mod.__test;
+  const labels = { fold: "Fold", autoFold: "Auto fold" };
+  assert.equal(eventLabel((key) => labels[key], { layer: "L2", tier: 1, reclaimed: 3100, auto: true }), "Auto fold T1 −3.1K", "automatic digests show as a fold, labelled as automatic");
+  assert.equal(eventLabel((key) => labels[key], { layer: "L2", tier: 2, reclaimed: 900 }), "Fold T2 −900");
   // One turn-end maintenance: fold f1, then an L1 card, then a stale sweep.
   const events = [
     { layer: "L1", reclaimed: 3500, at: 100 },

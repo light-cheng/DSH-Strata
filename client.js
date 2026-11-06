@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
       notActive: 'Strata not active',
       card: 'Card',
       fold: 'Fold',
+      autoFold: 'Auto fold',
       official: 'Summary',
       stale: 'Stale context',
       error: 'Compaction failed',
@@ -39,6 +40,7 @@ window.__ModuleLoader__.load({
       notActive: 'Strata 未接管',
       card: '切卡片',
       fold: '折叠',
+      autoFold: '自动折叠',
       official: '官方摘要',
       stale: '清理旧上下文',
       error: '压缩失败',
@@ -188,7 +190,7 @@ window.__ModuleLoader__.load({
     function eventLabel(t, event) {
       const saved = event.reclaimed ? ` −${kTokens(event.reclaimed)}` : ''
       if (event.layer === 'L1') return `${t('card')}${saved}`
-      if (event.layer === 'L2') return `${t('fold')} T${event.tier || 1}${saved}`
+      if (event.layer === 'L2') return `${t(event.auto ? 'autoFold' : 'fold')} T${event.tier || 1}${saved}`
       if (event.layer === 'ctx') return `${t('stale')}${saved}`
       return `${t('official')}${saved}`
     }
@@ -304,6 +306,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale'], apply, __test: { pickEvent } }
+    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel } }
   },
 })

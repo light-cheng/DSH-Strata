@@ -8,6 +8,9 @@ English is the default; the Chinese version follows below.
 
 - **Plugin page:** DSH's plugin page now shows a document written for it in the UI language (`docs/plugin-page.en.md`, `docs/plugin-page.zh-CN.md`, named by `meta.detail` in `locale/en.json` and `locale/zh.json`; other languages fall back to English) instead of the GitHub README with its language-switch line.
 
+- **Reminders reach the model inside long turns:** the fold reminder used to wait for the next user message, so a 40-step turn saw at most one. It now fires on any step once foldable context has grown by 50K, and an unanswered reminder comes back after another 25K (12.5K above 75 % of the window).
+- **Automatic digests:** when the model leaves two reminders unanswered and context is above 50 % of the window (or above 60 % regardless), Strata folds the oldest work down to about 30 % at turn end without calling the model. A digest keeps user messages, the start of assistant replies, every tool call with its path or command and first result line, and errors; it is tagged `auto=1`, archived and restorable like any fold, and goes through the same cost check. `strata_status` counts digests separately; the dock shows `Auto fold`; the `strata/fold-landed` event carries `auto: true`. All thresholds have `STRATA_*` knobs; `STRATA_AUTO_FOLD=off` disables it.
+
 ### v0.4.1 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
 0.4.0 was tagged but never published to npm, so 0.4.1 is the first npm release of the DSH-Mem0 interop work. It contains everything listed under 0.4.0:
@@ -100,6 +103,8 @@ Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recov
 ### 未发布
 
 - **插件页面：** DSH 插件页面现在按界面语言显示专门为它写的文档（`docs/plugin-page.en.md`、`docs/plugin-page.zh-CN.md`，由 `locale/en.json` 和 `locale/zh.json` 里的 `meta.detail` 指定；其他语言回退到英文），不再显示带语言切换行的 GitHub README。
+- **长轮次里也能收到提醒：** 折叠提醒不再只在有新用户消息的步骤出现；可折叠上下文每增长 50K 就会在任意步骤触发，没被理会的提醒在再增长 25K 后重新出现（上下文超过窗口 75 % 时为 12.5K）。
+- **自动摘要：** 模型连续两次没理会提醒且上下文超过 50 %（或不论提醒、超过 60 %）时，Strata 在轮次结束时把最旧的工作折叠到约 30 %，写成不经模型的抽取式摘要（用户消息、助手文字开头、每个工具调用及其路径或命令和结果首行、错误）。它和模型折叠一样可以用 decompress 和 search_context 还原，走同一个成本检查，头部标记 `auto=1`；`strata_status` 单独统计，面板显示“自动折叠”，`strata/fold-landed` 事件带 `auto: true`。所有阈值都有 `STRATA_*` 设置，`STRATA_AUTO_FOLD=off` 关闭。
 
 ### v0.4.1 — DSH-Mem0 兼容 / DSH-Mem0 interop
 
