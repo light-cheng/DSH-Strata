@@ -16,7 +16,7 @@ original text (L0) → tool cards (L1) → model-written folds T1–T3 (L2) → 
 ```
 
 - **L1 tool cards**: deterministic, no model call, cut at every turn end.
-- **L2 folds**: the model writes its own summaries of older ranges, and folds can be folded again (T1 → T2 → T3).
+- **L2 folds**: the model writes its own summaries of older ranges, and folds can be folded again (T1 → T2 → T3). When the model ignores the reminders, Strata folds the oldest work itself into an automatic digest.
 - **L3 archive**: every original is saved locally before anything is replaced; `decompress` and `search_context` bring it back.
 
 ## Features
@@ -26,7 +26,8 @@ original text (L0) → tool cards (L1) → model-written folds T1–T3 (L2) → 
 - **Cost-aware landing**: before a fold lands, Strata weighs the one-time cache miss against the tokens it saves for the rest of the session. A small or unprofitable fold waits, and the tool result says so in its first line; above 75 % of the window folds land regardless.
 - **Tier-by-tier recovery**: `decompress` walks T3 → T2 → T1 → card → original one level at a time, or straight to the originals with `full: true`; `toFile: true` writes large restores to `.strata/restore/`.
 - **Local search**: `search_context` runs BM25 keyword search (CJK bigrams included) over fold summaries, card originals and tool output, and shows each hit's expansion path, e.g. `f9(T3) → f4(T2) → f2(T1) → raw call-7`.
-- **Reminders that watch the right number**: L1 keeps the total low, so Strata watches foldable tokens instead. It reminds the model when they grew by 50K, and on every step above 75 % of the window.
+- **Reminders that watch the right number**: L1 keeps the total low, so Strata watches foldable tokens instead. It reminds the model when they grew by 50K, on any step of a turn, not only when a new message arrives. An unanswered reminder comes back after another 25K (12.5K above 75 % of the window).
+- **Automatic digests when the model does not fold**: at turn end, above 50 % of the window after two unanswered reminders (or above 60 % regardless), Strata folds the oldest foldable work down to about 30 % without calling the model. Each digest keeps the user messages, the start of assistant replies, every tool call with its path or command and first result line, and errors; its tag carries `auto=1` and its text says it was written by Strata. Digests are archived and restorable like any fold, never cover the live runtime context, the latest user message or the protected tail, and go through the same cost check. `strata_status` counts them separately, and the dock labels them `Auto fold`.
 - **Stock compaction stays as the fallback**: DSH's official summary still runs when L1 and L2 are not enough, with the span archived first. If Strata's engine cannot load, the stock engine runs; if that also fails, `/compact` fails immediately instead of hanging.
 - **Every Web / Desktop preset**: each agent preset (Standard, PTC, Minimal, Cordis) gets its own Strata engine with the same thresholds.
 - **Composer dock**: below the chat composer, next to dsh-mem0's memory globe, an 18px strata glyph shows context use (`Strata 4.9%`). When a layer changes the context it plays once: a grain drops into the top layer for an L1 card, or sinks through every layer for an L2 fold or the official summary, with the reclaimed tokens as the label (`Fold T1 −23.3K`). Light blue on success, red on failure, still when reduced motion is on; clicking it opens the plugin page.
@@ -40,6 +41,7 @@ turn in progress
   model calls compress     → range validated, recorded as pending, estimate returned
   decompress / search      → read-only, results appended to the end
 turn end (agent maintenance)
+  ⓪ automatic digests     → only when reminders went unanswered (see above)
   ① land pending folds     → back to front, one flush
   ② L1 tail cut            → newest finished tool stretch → card
   ③ record the prefix fingerprint, update status
@@ -99,7 +101,13 @@ Nothing needs to be configured; the defaults are tuned for a 1M-token window. St
 | `STRATA_L1_STOP_RATIO` | 0.65 | L1 stops above this share of the window |
 | `STRATA_CONTEXT_WINDOW` | 1000000 | Used when the model reports no window |
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | Foldable growth that triggers a reminder |
-| `STRATA_FORCE_PCT` | 0.75 | Remind every step and land folds regardless of cost |
+| `STRATA_FORCE_PCT` | 0.75 | Remind at once and land folds regardless of cost |
+| `STRATA_NUDGE_REARM_RATIO` / `STRATA_NUDGE_FORCED_REARM_RATIO` | 0.5 / 0.25 | An unanswered reminder repeats after this share of the growth step (below / above `STRATA_FORCE_PCT`) |
+| `STRATA_AUTO_FOLD` | on | `off` disables automatic digests |
+| `STRATA_AUTO_FOLD_PCT` / `STRATA_AUTO_FOLD_AFTER_NUDGES` | 0.5 / 2 | Automatic digest above this share of the window after this many unanswered reminders |
+| `STRATA_AUTO_FOLD_FORCE_PCT` | 0.6 | Automatic digest above this share regardless of reminders |
+| `STRATA_AUTO_FOLD_TARGET_PCT` | 0.3 | Fold the oldest runs until the context would be about this share |
+| `STRATA_AUTO_DIGEST_RATIO` | 0.12 | A digest keeps at most this share of the folded text (at least 1200 characters) |
 | `STRATA_MIN_BENEFIT_TOKENS` / `STRATA_MIN_BENEFIT_RATIO` | 5000 / 0.01 | Minimum fold batch: `max(tokens, window × ratio)` |
 | `STRATA_UPGRADE_BENEFIT_FACTOR` | 1.5 | Minimum-batch multiplier when the batch upgrades a fold |
 | `STRATA_PRICE_MISS` / `STRATA_PRICE_HIT` | 1 / 0.1 | Relative cache prices for the estimate |
@@ -114,7 +122,8 @@ The engine row's compaction thresholds (`thresholdRatio` 0.8, `headroomTokens` 6
 
 ## Limits
 
-- Folds land at the **end of a turn**. Inside one very long turn L2 cannot relieve pressure; DSH's own threshold then triggers the official summary (L∞), with the span archived first.
+- Folds land at the **end of a turn**, automatic digests too. Inside one very long turn L2 cannot relieve pressure; DSH's own threshold then triggers the official summary (L∞), with the span archived first.
+- Automatic digests are extractive: details beyond the first line of each tool result are only in the archive, so the model needs `decompress` or `search_context` to get them back.
 - L1 cards are cut at turn end too, so a fold over a short, already-carded task reclaims little and may be deferred by the cost check. That is intended: in long sessions one fold covers many cards.
 - The TUI preset is not supported; forked sessions cannot read the parent session's archive yet.
 

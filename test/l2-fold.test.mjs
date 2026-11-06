@@ -166,8 +166,8 @@ test("nudge fires on foldable growth, once per step of growth, and forced near t
   const forced = setup({ window: 12_000 });
   buildConversation(forced.session);
   await forced.layer.resolveWindow(forced.agent);
-  assert.match(forced.layer.nudge(forced.agent), /please fold something now/);
-  assert.match(forced.layer.nudge(forced.agent), /please fold/, "forced nudges repeat");
+  assert.match(forced.layer.nudge(forced.agent), /please fold something now/, "the first forced nudge fires at once");
+  assert.equal(forced.layer.nudge(forced.agent), null, "an unanswered forced nudge waits for a quarter step of growth");
 });
 
 test("tools row: compress/decompress/search_context/strata_status execute through exec.agent", async () => {

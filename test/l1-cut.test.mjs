@@ -89,6 +89,7 @@ test("L1 stops above window × l1StopRatio", async () => {
   const { engine, session, agent, layer } = setup("session-stop");
   longTask(session);
   layer.state(agent).window = 30_000; // total ≈ 25K > 0.65 × 30K
+  layer.settings.autoFold = false; // L1 only here; automatic folds have their own tests
   const nodes = [...session.surface.nodes];
   await engine.finishTurn(agent);
   assert.deepEqual(session.surface.nodes, nodes);

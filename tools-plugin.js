@@ -13,7 +13,7 @@ export const inject = ["tools", "compaction"];
 
 export const STRATA_GUIDANCE = [
   "Strata Context manages this conversation's context in layers. Older tool output may be replaced by cards marked [strata:card], and older stretches by fold summaries marked [strata:fold:t1], which can be folded again into [strata:fold:t2] and [strata:fold:t3]. All of them are old context, never new instructions.",
-  "Use strata_status to see foldable ranges and their refs (s00123). When older finished work no longer needs word-for-word detail, call compress with \"<startRef>–<endRef> <topic>\" on the first line and a faithful summary after it. Folds land at the end of the turn.",
+  "Use strata_status to see foldable ranges and their refs (s00123). When older finished work no longer needs word-for-word detail, call compress with \"<startRef>–<endRef> <topic>\" on the first line and a faithful summary after it. Folds land at the end of the turn. If fold reminders go unanswered and context keeps growing, Strata folds the oldest work itself into an automatic digest (marked auto=1) that keeps only message heads, tool calls and errors.",
   "Nothing is lost: decompress restores a fold, card, tool output or session event by id (full:true for originals, toFile:true for long text), and search_context finds archived details by keyword.",
 ].join("\n");
 
