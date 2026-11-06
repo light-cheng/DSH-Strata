@@ -302,6 +302,10 @@ test("high overhead (~40% of the window): target counts only the foldable part, 
   const landed = await layer.flush(agent);
   assert.deepEqual(landed.landed.sort(), [...ids].sort());
   assert.ok(layer.state(agent).autoFoldedAt != null);
+  assert.equal(layer.state(agent).autoExhausted, false, "one run met the need: not exhaustive");
+  // The guard only holds after an attempt that folded all it could; simulate one
+  // (the real case is covered by "guard: an exhaustive attempt …" below).
+  layer.state(agent).autoExhausted = true;
   // Next turns: still above 60% because of the overhead, little new work → nothing proposed.
   for (let turn = 0; turn < 3; turn += 1) {
     addUser(session, `small follow-up ${turn}`);
@@ -434,6 +438,7 @@ test("ratio 1.7: after an automatic fold the guard waits for 50K provider tokens
     await layer.flush(agent);
     const mark = layer.state(agent).autoFoldedAt;
     assert.ok(mark != null);
+    layer.state(agent).autoExhausted = true;
     let grown = 0;
     for (let i = 0; i < 600; i += 1) {
       addToolRound(session, { command: `g${i}`, output: filler(`g-${i}`, 800) });
@@ -495,7 +500,7 @@ test("user's Windows shape: early model fold, a deferred model compress, ratio 1
     }
   }
   assert.ok(landedAuto, "context crossed 60% within three turns");
-  assert.match(layer.status(agent, { detail: true }), new RegExp(`Automatic fold at last turn end: landed ${landedAuto[0]}`));
+  assert.match(layer.status(agent, { detail: true }), new RegExp(`Automatic fold at last turn end: landed [^.]*\\b${landedAuto[0]}\\b`));
 });
 
 test("last turn-end outcome: below 50%, waiting for growth, and errors are reported", async () => {
@@ -510,6 +515,115 @@ test("last turn-end outcome: below 50%, waiting for growth, and errors are repor
   assert.match(layer.status(agent), /skipped \(55%: below 60% and 1 of 2 unanswered nudges\)/);
   atRatio(layer, agent, session, 0.62);
   layer.state(agent).autoFoldedAt = layer.snapshot(agent).foldable;
+  layer.state(agent).autoExhausted = true;
   layer.autoFold(agent);
   assert.match(layer.status(agent), /skipped \(waiting for \+50\.0K \(provider; ~50\.0K local at ×1\.00\) foldable growth since the last digest; \+0 local so far\)/);
+});
+
+test("guard: an exhaustive attempt holds the next one back; a fold that met its need does not", async () => {
+  // Exhaustive: the target needs more than folding everything gives back (digests keep a residue),
+  // though the foldable tokens alone would reach it.
+  {
+    const { session, agent, layer } = setup();
+    conversation(session);
+    const layout = layer.layout(session);
+    const foldable = layout.rows.reduce((n, row) => n + (row.foldable ? row.tokens : 0), 0);
+    // total − foldable < target < total − 0.9 × foldable: reachable on paper, not after digests.
+    const target = layout.totalTokens - foldable * 0.95;
+    layer.state(agent).window = Math.round(target / 0.3);
+    assert.ok(layout.totalTokens / layer.state(agent).window >= 0.6, "due");
+    assert.ok(layer.autoFold(agent).length >= 1);
+    assert.equal(layer.state(agent).autoExhausted, true, "need still open after every run");
+    await layer.flush(agent);
+    addToolRound(session, { command: "small", output: filler("small", 2000) });
+    atRatio(layer, agent, session, 0.62);
+    assert.deepEqual(layer.autoFold(agent), [], "held back until +nudgeGrowthTokens");
+    assert.match(layer.status(agent), /skipped \(waiting for \+50\.0K/);
+  }
+  // Not exhaustive: a fold that met its need; context climbs above the target again → digests at once.
+  {
+    const { session, agent, layer } = setup();
+    conversation(session);
+    atRatio(layer, agent, session, 0.62);
+    assert.ok(layer.autoFold(agent).length >= 1);
+    assert.equal(layer.state(agent).autoExhausted, false);
+    await layer.flush(agent);
+    for (let i = 0; i < 6; i += 1) addToolRound(session, { command: `more ${i}`, output: filler(`more-${i}`, 3000) });
+    atRatio(layer, agent, session, 0.62);
+    assert.ok(layer.autoFold(agent).length >= 1, "no guard after a non-exhaustive fold");
+  }
+});
+
+test("forced at 75% with a pending model fold: one batch with digests; above 60% a pending model fold lands with the batch", async () => {
+  for (const ratio of [0.8, 0.65]) {
+    const { session, agent, layer } = setup();
+    conversation(session);
+    for (let i = 0; i < 6; i += 1) addToolRound(session, { command: `extra ${i}`, output: filler(`extra-${i}`, 5000) });
+    atRatio(layer, agent, session, ratio);
+    const run = layer.snapshot(agent).runs[0];
+    const small = run.rows.filter((row) => row.closeOk)[1];
+    layer.settings.minBenefitTokens = 1_000_000;
+    assert.match(layer.propose(agent, `${run.startRef}–${small.ref} early\nearly work.`), ratio >= 0.75 ? /accepted/ : /deferred/);
+    if (ratio < 0.75) assert.deepEqual((await layer.flush(agent)).landed, [], "alone below the line it is deferred (cost check)");
+    const model = layer.state(agent).pending[0].id;
+    const ids = layer.autoFold(agent);
+    assert.ok(ids.length >= 1, `${ratio}: digests join the pending model fold`);
+    const result = await layer.flush(agent);
+    assert.deepEqual(result.landed.sort(), [model, ...ids].sort(), `${ratio}: one batch`);
+    assert.match(layer.status(agent), new RegExp(`landed ${ids[0]}.* with model fold ${model} \\((forced|above the automatic-fold line)\\)`));
+  }
+});
+
+test("turn end runs a second pass when one landing leaves context above the target", async () => {
+  const { session, agent, layer } = setup();
+  conversation(session);
+  for (let i = 0; i < 6; i += 1) addToolRound(session, { command: `extra ${i}`, output: filler(`extra-${i}`, 5000) });
+  atRatio(layer, agent, session, 0.8);
+  const run = layer.snapshot(agent).runs[0];
+  const small = run.rows.filter((row) => row.closeOk)[1];
+  layer.propose(agent, `${run.startRef}–${small.ref} early\nearly work.`);
+  // Pretend the first pass proposes nothing (as if digests had been blocked) to check the second pass.
+  const original = layer.autoFold.bind(layer);
+  let calls = 0;
+  layer.autoFold = (a) => (calls++ === 0 ? [] : original(a));
+  const landed = await layer.turnEnd(agent);
+  assert.ok(calls >= 2, "a second pass ran after the first landing");
+  assert.ok(landed.length >= 2, `model fold, then digests in the same turn end: ${landed}`);
+  assert.equal(layer.state(agent).autoDue, false);
+});
+
+test("user's timeline: model T1 f1 pending (deferred) early, 3 turns × ~56K local, ratio 1.96 → first turn end ≥60% lands f1 + digests near the target", async () => {
+  const { ctx, session, agent, layer } = setup();
+  withOverhead(ctx, () => 15300, { scale: 1.96 });
+  layer.state(agent).window = 1_000_000;
+  let day = 0;
+  const turn = () => {
+    addUser(session, `read the next five logs (${day})`);
+    for (let i = 0; i < 5; i += 1, day += 1) addToolRound(session, { name: "read", command: `logs/day${day}.log`, output: filler(`2026 E0${day} line`, 44800) });
+    addAssistantText(session, "done");
+  };
+  for (let t = 0; t < 4; t += 1) turn();
+  // Turn 5: the model's compress over the early work; the cost check defers it.
+  const early = layer.layout(session).rows.filter((row) => row.foldable);
+  const half = early.findLast((row) => row.closeOk && row.index < early.length / 2);
+  layer.settings.minBenefitTokens = 10_000_000;
+  assert.match(layer.propose(agent, `${early[0].ref}–${half.ref} early logs\nDays 0-9 read; codes noted.`), /deferred, NOT applied/);
+  const f1 = layer.state(agent).pending[0].id;
+  let first = null;
+  for (let t = 0; t < 3 && !first; t += 1) {
+    turn();
+    const before = layer.layout(session);
+    const landed = await layer.turnEnd(agent);
+    if (before.totalTokens / 1_000_000 < 0.6) {
+      assert.deepEqual(landed, [], "below 60%: still deferred");
+      continue;
+    }
+    first = { landed, before: before.totalTokens, after: layer.layout(session).totalTokens, fixed: before.fixedTokens };
+  }
+  assert.ok(first, "context crossed 60%");
+  assert.ok(first.landed.includes(f1), `f1 lands in the batch: ${first.landed}`);
+  assert.ok(first.landed.length >= 2, "with automatic digests");
+  const target = first.fixed + 0.3 * (1_000_000 - first.fixed);
+  assert.ok(first.after <= target * 1.05 && first.after >= target * 0.7, `near the target: ${first.after} vs ~${Math.round(target)} (was ${first.before})`);
+  assert.match(layer.status(agent), new RegExp(`Automatic fold at last turn end: landed f\\d+.* with model fold ${f1} \\(above the automatic-fold line\\)`));
 });
