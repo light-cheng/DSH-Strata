@@ -170,13 +170,16 @@ export function apply(ctx) {
     };
   }, "strata: tools");
 
-  // L2 nudge (design §3): appended to the tail of a step that already admits
-  // new user input, so the cached prefix is untouched.
+  // L2 nudge (design §3): appended to the tail of the step's new messages, so
+  // the cached prefix is untouched. Mid-turn steps admit no new messages, but
+  // appending one there is fine too (DSH's own model-switch notice does it);
+  // before 0.4.2 the nudge waited for the next user message, so a long turn
+  // (30+ tool steps) saw at most one nudge, at its start.
   ctx.on("agent/pre-step", async (payload, next) => {
     const decision = await next();
     try {
       if (decision?.kind !== "enter" || payload.signal?.aborted) return decision;
-      if (!Array.isArray(decision.messages) || decision.messages.length === 0) return decision;
+      if (!Array.isArray(decision.messages)) return decision;
       await layer.resolveWindow(payload.agent, payload.signal);
       const text = layer.nudge(payload.agent);
       if (!text) return decision;

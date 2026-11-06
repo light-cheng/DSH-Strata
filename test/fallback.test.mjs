@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { fakeAgent, fakeContext, FakeSession } from "./helpers/fake-dsh.mjs";
+import { addToolRound, addUser, fakeAgent, fakeContext, FakeSession, filler } from "./helpers/fake-dsh.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "strata-fallback-"));
 process.env.STRATA_SHADOW_DIR = root;
@@ -139,4 +139,30 @@ test("tools row with the Strata engine: tools, guidance, /strata, nudge on pre-s
   const decision = { kind: "enter", messages: [{ role: "user", content: [] }] };
   const out = await preStep({ agent, signal: new AbortController().signal }, async () => decision);
   assert.equal(out, decision, "no nudge on an empty session");
+});
+
+test("nudge also fires on a mid-turn step (no new messages), once per step of growth", async () => {
+  const base = fakeContext();
+  const engine = new Engine(base, {});
+  const ctx = fakeContext({ services: {
+    compaction: engine,
+    tools: { register() { return () => {}; } },
+    commands: { register() { return () => {}; } },
+    systemPrompt: { section() { return () => {}; } },
+  } });
+  tools.apply(ctx);
+  const session = new FakeSession({ id: "s-midturn" });
+  addUser(session, "process every file");
+  for (let i = 0; i < 40; i += 1) addToolRound(session, { command: `step ${i}`, output: filler(`o${i}`, 6000), turn: 1 });
+  const agent = fakeAgent(session);
+  const [preStep] = ctx.handlers.get("agent/pre-step");
+  const midTurn = { kind: "enter", messages: [] };
+  const out = await preStep({ agent, signal: new AbortController().signal, step: 41 }, async () => midTurn);
+  assert.equal(out.messages.length, 1, "nudge appended on a mid-turn step");
+  assert.match(out.messages[0].content[0].text, /^\[strata\] Automatic context note/);
+  assert.equal(out.messages[0].source.kind, "strata");
+  const again = await preStep({ agent, signal: new AbortController().signal, step: 42 }, async () => ({ kind: "enter", messages: [] }));
+  assert.equal(again.messages.length, 0, "no second nudge without another step of growth");
+  const reject = { kind: "reject", reason: "x" };
+  assert.equal(await preStep({ agent, signal: new AbortController().signal, step: 43 }, async () => reject), reject);
 });
