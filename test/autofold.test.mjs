@@ -332,7 +332,8 @@ test("high overhead (~40% of the window): target counts only the foldable part, 
 test("no proposal when everything left is fixed or protected; the force line still folds", () => {
   const { ctx, session, agent, layer } = setup();
   conversation(session);
-  // A large protected tail (the live task's last rounds).
+  // A large protected tail (the live task's last rounds); the tail cap is off here.
+  layer.settings.protectedTailPct = 0;
   for (let i = 0; i < 3; i += 1) addToolRound(session, { command: `cat big${i}`, output: filler(`big-${i}`, 24000) });
   const layout0 = layer.layout(session);
   const foldable = layout0.rows.reduce((sum, row) => sum + (row.foldable ? row.tokens : 0), 0);
@@ -626,4 +627,87 @@ test("user's timeline: model T1 f1 pending (deferred) early, 3 turns × ~56K loc
   const target = first.fixed + 0.3 * (1_000_000 - first.fixed);
   assert.ok(first.after <= target * 1.05 && first.after >= target * 0.7, `near the target: ${first.after} vs ~${Math.round(target)} (was ${first.before})`);
   assert.match(layer.status(agent), new RegExp(`Automatic fold at last turn end: landed f\\d+.* with model fold ${f1} \\(above the automatic-fold line\\)`));
+});
+
+/** One turn of the user's shape: a user message, one assistant message with five parallel log reads, five results, a reply. */
+function parallelTurn(session, day, chars = 44800) {
+  addUser(session, `read the next five logs (${day})`);
+  const ids = [];
+  const calls = [];
+  for (let i = 0; i < 5; i += 1) {
+    const id = `call-par-${day + i}`;
+    ids.push(id);
+    calls.push({ type: "tool-call", id, name: "read", arguments: { file_path: `logs/day${day + i}.log` } });
+  }
+  session.append("assistant/message", { message: { role: "assistant", content: calls } });
+  for (let i = 0; i < 5; i += 1) session.append("tool/result", { message: { role: "tool", toolCallId: ids[i], content: [{ type: "text", text: filler(`2026 E0${day + i} line`, chars) }] } });
+  addAssistantText(session, "done");
+}
+
+test("protected tail cap (user's shape: 1M, ×3.03, one round of 5 parallel ~11K reads per turn): digests land near the target", async () => {
+  const { ctx, session, agent, layer } = setup();
+  withOverhead(ctx, () => 3300, { scale: 3.03 });
+  layer.state(agent).window = 1_000_000;
+  let day = 0;
+  let landed = [];
+  let before = 0;
+  for (let t = 0; t < 8 && landed.length === 0; t += 1) {
+    parallelTurn(session, day);
+    day += 5;
+    before = layer.layout(session).totalTokens;
+    layer.state(agent).unanswered = 5;
+    landed = await layer.turnEnd(agent);
+  }
+  assert.ok(landed.length >= 1, "an automatic fold landed");
+  assert.ok(day >= 10, "several turns");
+  const after = layer.layout(session);
+  const target = after.fixedTokens + 0.3 * (1_000_000 - after.fixedTokens);
+  assert.ok(after.totalTokens <= target * 1.05, `near the target, not ~40%: ${after.totalTokens} (target ~${Math.round(target)}, was ${before})`);
+  // The newest round is intact: its call and all five results are raw and protected.
+  const newest = after.rows.findLast((row) => row.toolCalls > 0);
+  assert.equal(newest.toolCalls, 5);
+  const results = after.rows.slice(newest.index + 1).filter((row) => row.role === "tool");
+  assert.equal(results.length, 5);
+  assert.ok([newest, ...results].every((row) => row.protected && row.stratum === "raw"));
+  // One round is ~56K local ≈ 170K provider, above 10%: the newest round alone stays, whole.
+  assert.equal(after.tail.rounds, 1);
+  assert.match(layer.status(agent, { detail: true }), /Protected tail: (last 1 of [23] tool rounds|1 tool round), ~[\d.]+K local \(~[\d.]+K provider\), (capped at 10% of the window|over the 10% cap); the newest round alone is larger and stays whole\./);
+});
+
+test("protected tail cap: trims older rounds under the cap, keeps pairs balanced; off restores 3 rounds", () => {
+  for (const cap of [0.1, 0]) {
+    const { ctx, session, agent, layer } = setup();
+    withOverhead(ctx, () => 0, { scale: 3.03 });
+    layer.settings.protectedTailPct = cap;
+    layer.state(agent).window = 1_000_000;
+    // Small rounds: 3 rounds of ~6K local ≈ 18K provider each.
+    for (let d = 0; d < 6; d += 1) parallelTurn(session, d * 5, 4800);
+    const layout = layer.layout(session);
+    const rounds = layout.rows.filter((row) => row.index >= layout.protectFrom && row.toolCalls > 0).length;
+    if (cap) {
+      assert.ok(layout.tail.tokens * 3.03 <= 100_000 || layout.tail.rounds === 1, "under 10% of the window, in provider tokens");
+      assert.equal(rounds, layout.tail.rounds);
+      // The boundary sits on an assistant message with tool calls: no result is separated from its call.
+      assert.ok(layout.rows[layout.protectFrom].toolCalls > 0);
+      assert.match(layer.status(agent), layout.tail.capped ? /Protected tail: last \d of 3 tool rounds, .*capped at 10% of the window\./ : /Protected tail: 3 tool rounds, .*under the 10% cap\./);
+    } else {
+      assert.equal(rounds, 3, "cap off: last three rounds");
+      assert.equal(layout.tail.capped, false);
+      assert.match(layer.status(agent), /Protected tail: 3 tool rounds, ~[\d.]+K local \(~[\d.]+K provider\), no cap \(STRATA_PROTECTED_TAIL_PCT off\)\./);
+    }
+  }
+  // Under the cap: unchanged three rounds.
+  const { ctx, session, agent, layer } = setup();
+  withOverhead(ctx, () => 0, { scale: 1 });
+  layer.state(agent).window = 1_000_000;
+  for (let d = 0; d < 4; d += 1) parallelTurn(session, d * 5, 2000);
+  assert.match(layer.status(agent), /Protected tail: 3 tool rounds, ~[\d.]+K local \(~[\d.]+K provider\), under the 10% cap\./);
+});
+
+test("STRATA_PROTECTED_TAIL_PCT: default 0.10, 0 or off disables", async () => {
+  const { readSettings } = await import("../lib/settings.js");
+  assert.equal(readSettings({}).protectedTailPct, 0.1);
+  assert.equal(readSettings({ STRATA_PROTECTED_TAIL_PCT: "0.2" }).protectedTailPct, 0.2);
+  assert.equal(readSettings({ STRATA_PROTECTED_TAIL_PCT: "0" }).protectedTailPct, 0);
+  assert.equal(readSettings({ STRATA_PROTECTED_TAIL_PCT: "off" }).protectedTailPct, 0);
 });

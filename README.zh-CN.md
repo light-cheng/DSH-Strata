@@ -60,7 +60,7 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 
 斜杠命令：`/strata`（状态）、`/strata detail`、`/strata search <关键词>`、`/strata purge`（删除本会话的存档文件）。
 
-规则：L1 只切原文节点。一个折叠可以包含原文、卡片和完整的低一级折叠，但不能包含官方摘要、最新一条用户消息和最近三轮工具调用。每张卡片、每个折叠和每段摘要开头都有 `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` 标签，并写明这是旧内容，不是新指令。
+规则：L1 只切原文节点。一个折叠可以包含原文、卡片和完整的低一级折叠，但不能包含官方摘要、最新一条用户消息和受保护的尾部：最近三轮工具调用，上限约为窗口的 10%（按服务商 token 算；最新一轮总是完整保留；`strata_status` 显示尾部大小）。每张卡片、每个折叠和每段摘要开头都有 `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` 标签，并写明这是旧内容，不是新指令。
 
 ## 安装
 
@@ -98,6 +98,7 @@ dsh plugin --profile desktop add link:"$(pwd)"
 |---|---|---|
 | `STRATA_MIN_TOKENS` | 20000 | 低于这个量时 L1 不动 |
 | `STRATA_KEEP_ROUNDS` / `STRATA_KEEP_ROUND_TOKENS` | 3 / 32000 | L1 保护的尾部 |
+| `STRATA_PROTECTED_TAIL_PCT` | 0.10 | 折叠受保护尾部（最近 `STRATA_KEEP_ROUNDS` 轮工具调用）的上限，占窗口的比例，按服务商 token 算；超过时去掉较早的轮次，最新一轮总是完整保留；`0` 或 `off` 关闭上限 |
 | `STRATA_L1_STOP_RATIO` | 0.65 | 超过窗口的这个比例后 L1 停止 |
 | `STRATA_CONTEXT_WINDOW` | 1000000 | 模型没报告窗口时使用 |
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | 可折叠内容增长这么多（服务商 token）时提醒；自动摘要后的等待量也用它 |
