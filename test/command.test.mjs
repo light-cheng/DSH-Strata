@@ -163,3 +163,19 @@ test("translator falls back to English keys and keeps unknown placeholders", () 
   assert.equal(t("detail.changeReclaimed", { tokens: "1K" }), "−1K");
   assert.equal(t("no.such.key"), "no.such.key");
 });
+
+test("detail rule: mid-turn digests named only when the fold code has them on; dropped row shows tokens", () => {
+  const { layer, agent } = setup();
+  const cost = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.doesNotMatch(cost, /一轮中途/);
+  const saved = layer.settings;
+  layer.settings = { ...saved, midTurnFold: true, autoFoldForcePct: 0.35 };
+  try {
+    assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /；质量优先模式下，一轮中途超过 35% 时也会先摘要之前几轮/);
+    assert.match(runCommand(layer, agent, "detail", { language: "en" }).text, /quality preset: mid-turn too.*above 35%/);
+  } finally {
+    layer.settings = saved;
+  }
+  const dropped = cost.split("\n").find((line) => line.trim().startsWith("运行时上下文（已清掉）"));
+  assert.match(dropped, /运行时上下文（已清掉）[\s　]+\d[\d.]*K?\s+\d+$/, dropped);
+});

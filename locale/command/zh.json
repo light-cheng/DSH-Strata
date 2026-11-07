@@ -49,6 +49,7 @@
     "auto": "3. 自动折叠",
     "rule": "规则",
     "ruleOn": "轮末超过 {pct} 且连续 {nudges} 次提醒没有回应，或超过 {force} 时，从最早的内容开始折叠，直到约 {target}（固定开销 + 剩余空间的 {targetPct}）",
+    "ruleMidTurn": "；质量优先模式下，一轮中途超过 {force} 时也会先摘要之前几轮",
     "ruleOff": "已关闭（STRATA_AUTO_FOLD）",
     "last": "上次轮末",
     "lastNone": "还没有轮末",

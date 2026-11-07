@@ -49,6 +49,7 @@
     "auto": "3. Automatic folds",
     "rule": "Rule",
     "ruleOn": "at turn end above {pct} after {nudges} unanswered reminders, or above {force}; oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)",
+    "ruleMidTurn": "; quality preset: mid-turn too, earlier turns are digested before a step once context is above {force}",
     "ruleOff": "off (STRATA_AUTO_FOLD)",
     "last": "Last turn end",
     "lastNone": "no turn end yet",
