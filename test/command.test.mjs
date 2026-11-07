@@ -171,11 +171,48 @@ test("detail rule: mid-turn digests named only when the fold code has them on; d
   const saved = layer.settings;
   layer.settings = { ...saved, midTurnFold: true, autoFoldForcePct: 0.35 };
   try {
-    assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /；质量优先模式下，一轮中途超过 35% 时也会先摘要之前几轮/);
-    assert.match(runCommand(layer, agent, "detail", { language: "en" }).text, /quality preset: mid-turn too.*above 35%/);
+    assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /；一轮中途超过 35% 时也会先摘要之前几轮/);
+    assert.match(runCommand(layer, agent, "detail", { language: "en" }).text, /mid-turn above 35%, earlier turns are digested first/);
   } finally {
     layer.settings = saved;
   }
   const dropped = cost.split("\n").find((line) => line.trim().startsWith("运行时上下文（已清掉）"));
   assert.match(dropped, /运行时上下文（已清掉）[\s　]+\d[\d.]*K?\s+\d+$/, dropped);
+});
+
+test("detail: small window shows DSH's summary line and the lowered line; mode, nudges and archive total in the overview", () => {
+  const { layer, agent } = setup();
+  const state = layer.state(agent);
+  state.window = 200_000;
+  state.maxTokens = 16_384;
+  const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(zh, /官方摘要触发线[\s　]+约 118\.1K（59%）；已按窗口下调到 54(\.\d)?%/);
+  assert.match(zh, /轮末超过 50% 且连续 2 次提醒没有回应，或超过 54(\.\d)?% 时/);
+  assert.match(zh, /模式[\s　]+成本优先（默认）/);
+  assert.match(zh, /提醒模型折叠[\s　]+开/);
+  assert.match(zh, /全部会话的存档[\s　]+\d+\.\d MB，\d+ 个会话/);
+  assert.match(zh, /上下文窗口[\s　]+200\.0K/);
+  const en = runCommand(layer, agent, "detail", { language: "en" }).text;
+  assert.match(en, /Official summary line\s+~118\.1K \(59%\); lines lowered to 54(\.\d)?% for this window/);
+  state.window = 1_000_000;
+  const big = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(big, /官方摘要触发线[\s　]+约 800\.0K（80%）$/m);
+});
+
+test("purge ended: warns first, deletes only ended sessions' archives on confirm", async () => {
+  const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
+  const { layer, agent } = setup();
+  const archive = join(root, "archive");
+  mkdirSync(join(archive, "old-session"), { recursive: true });
+  writeFileSync(join(archive, "old-session", "fold-f1.json"), "{}");
+  const own = layer.engine.ensureArchiveDir(layer.state(agent).key);
+  writeFileSync(join(own, "fold-f1.json"), "{}");
+  const warning = runCommand(layer, agent, "purge ended", { language: "zh" }).text;
+  assert.match(warning, /\/strata purge ended confirm/);
+  assert.ok(existsSync(join(archive, "old-session", "fold-f1.json")), "nothing deleted before confirm");
+  const done = runCommand(layer, agent, "purge ended confirm", { language: "zh" }).text;
+  assert.match(done, /已删除 \d+ 个已结束会话的存档/);
+  assert.ok(!existsSync(join(archive, "old-session")));
+  assert.ok(existsSync(join(own, "fold-f1.json")), "this session's archive stays");
+  assert.match(runCommand(layer, agent, "help", { language: "zh" }).text, /\/strata purge ended[\s　]+清理已结束会话的归档/);
 });

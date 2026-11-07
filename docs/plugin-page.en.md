@@ -7,5 +7,6 @@ Strata manages the context in layers: older tool output is cut into cards, older
 - **Automatic digests:** when the model ignores the reminders, Strata folds the oldest work itself at turn end without a model call (above 50% of the window after two unanswered reminders, or above 60%), until the context is down to its fixed overhead plus about 30% of the room left.
 - **Local archive (L3):** `decompress` restores any card or fold tier by tier, and `search_context` searches everything that was replaced.
 - **Fallback:** DSH's official summary still runs when the layers are not enough; `strata_status` and `/strata` show the state.
+- **Settings:** below on this page, pick cost first / quality first / custom, the reminder switch and archive options; changes apply without a restart. Read-only figures are in `/strata detail`.
 
 Source, issues and release notes: https://github.com/light-cheng/dsh-strata

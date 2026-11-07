@@ -68,12 +68,14 @@
   "peerDependencies": {
     "@deepseek-ai/dsh-compaction": ">=0.2.1-rc.5 <0.3.0",
     "@deepseek-ai/dsh-compaction-basic": ">=0.2.1-rc.5 <0.3.0",
-    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.5 <0.3.0"
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.5 <0.3.0",
+    "@deepseek-ai/schemastery": ">=3.18.5"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-compaction": "0.2.1-rc.5",
     "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.5"
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "~3.18.5"
   },
   "dsh": {
     "displayName": "Strata Context",

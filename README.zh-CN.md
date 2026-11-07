@@ -99,9 +99,28 @@ dsh plugin --profile desktop add link:"$(pwd)"
 
 > **请先卸载 `dsh-live-compact` 或 `billion-context`。** 它们替换的是同一行压缩配置。只要装着其中一个，Strata 就不接管：DSH 原版压缩照常运行，并打一条警告。
 
+## 设置
+
+DSH 插件页里 Strata 分层上下文的详情下面有 **Strata 设置**（Web / 桌面版）。保存后在下一次轮末或下一步生效，不用重启；环境变量（`STRATA_*`）优先于设置页，设置页优先于内置默认值。
+
+| 设置 | 默认值 | 含义 |
+|---|---|---|
+| 模式 | 成本优先 | **成本优先**：自动折叠线 50%（连续 2 次提醒没有回应时），强制折叠线 60%，目标 30%，受保护末尾最多占窗口 10%，只在轮末折叠。**质量优先**：25% / 35% / 目标 15%，末尾上限 10%，开启轮中摘要。**自定义**：显示各条线、末尾上限、轮中摘要和"也折叠当前轮"，自己设置 |
+| 自动折叠 | 开 | 提醒没有回应时，Strata 自己把最早的内容折成摘要 |
+| 提醒模型折叠 | 开 | 环境变量 `STRATA_NUDGE=off` 也能关掉 |
+| 存档位置 | `<DSH_HOME>/strata` | 对新会话生效；已打开的会话继续用原来的文件夹 |
+| 存档大小提醒上限 | 1024 MB | 超过时在日志和 `/strata detail` 里提醒，不会删除任何文件 |
+| 已结束会话的存档保留天数 | 0 天（从不删除） | 大于 0 时，超过这么多天没用过的会话存档会被自动删除 |
+
+**恢复默认** 会清掉设置页上的全部值。这些值存在 profile 的 `cordis.patch.yml` 里 `strata-gate` 这个 id 下，所以 headless、TUI 等 profile 也可以直接在那里写（例如 `mode: quality`）。内部参数（缓存价格比、升级系数、最小批量、L1 上限）仍然只用环境变量。
+
+**小窗口自动下调。** DSH 官方摘要（L∞）的触发线是 min(0.8 × 窗口, 窗口 − maxTokens − 65536)。窗口小于约 204K 时，这条线会低于预设的线，Strata 就永远赶不上在它之前折叠。这时 Strata 把自动折叠线和强制折叠线降到它下面 5 个百分点（目标不变，自定义值也会下调）；`/strata detail` 里会显示，例如 `官方摘要触发线 约 118.1K（59%）；已按窗口下调到 54%`。1M 窗口不受影响。
+
+只读信息在 `/strata detail` 里：模式及其来源、窗口及其来源（服务商报告或 1M 默认值）、本会话和全部会话的存档大小、存档位置、官方摘要触发线。`/strata purge ended` 清理已结束会话的存档（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），需要再发 `/strata purge ended confirm` 确认。
+
 ## 配置
 
-不需要任何配置，默认值按 1M token 窗口调好。Strata 自己的参数是 DSH 启动时读取的环境变量：
+不需要任何配置，默认值按 1M token 窗口调好。除了设置页，所有参数都是 DSH 启动时读取的环境变量；环境变量优先于设置页：
 
 | 变量 | 默认值 | 含义 |
 |---|---|---|
@@ -113,7 +132,7 @@ dsh plugin --profile desktop add link:"$(pwd)"
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | 可折叠内容增长这么多（服务商 token）时提醒；自动摘要后的等待量也用它 |
 | `STRATA_FORCE_PCT` | 0.75 | 超过后立刻提醒，并且不论代价都落地 |
 | `STRATA_NUDGE_REARM_RATIO` / `STRATA_NUDGE_FORCED_REARM_RATIO` | 0.5 / 0.25 | 提醒没有回应时，再增长「增长步长 × 这个比例」就再提醒（低于 / 高于 `STRATA_FORCE_PCT`） |
-| `STRATA_PRESET` | cost | `cost`：用下面的线，只在轮末折叠（缓存未命中少，带的上下文多）。`quality`：自动折叠线 25%、强制线 35%、目标 15%，并在轮次中途摘录。显式设置的 `STRATA_*` 值优先于预设 |
+| `STRATA_PRESET` | cost | 模式（`cost`、`quality` 或 `custom`；优先于设置页）。`cost`：用下面的线，只在轮末折叠（缓存未命中少，带的上下文多）。`quality`：自动折叠线 25%、强制线 35%、目标 15%，并在轮次中途摘录。显式设置的 `STRATA_*` 值优先于预设 |
 | `STRATA_NUDGE` | on | `off`：不再提醒模型折叠，折叠交给自动摘录（较低那条线也就不再要求提醒没有回应）。`compress` 工具照常可用 |
 | `STRATA_MID_TURN_FOLD` | `quality` 下为 on | 只在 `quality` 预设下生效：在一步之前、超过强制线时，摘录当前轮之前的各轮（当前运行时上下文不动）；`off` 只在轮末折叠 |
 | `STRATA_MID_TURN_CURRENT` | off | 设为 `on` 开启（实测验证前默认关闭）。只在 `quality` 预设且开启中途摘录时生效：之前各轮摘录完后，再摘录当前轮已完成的工具回合，从旧到新，每个回合整体处理（调用和它的全部结果）。受保护尾部、本轮的用户消息、正在进行的那一步和当前运行时上下文都不动；`off` 让中途摘录只处理之前的轮 |
@@ -128,7 +147,9 @@ dsh plugin --profile desktop add link:"$(pwd)"
 | `STRATA_EXPECTED_REQUESTS` | 自动 | 估算假设的剩余请求数 |
 | `STRATA_MAX_DEFER_TURNS` | 3 | 小折叠最多等几次轮末，之后丢弃 |
 | `STRATA_RESTORE_MAX_CHARS` | 24000 | `decompress` 直接返回的字符上限 |
-| `STRATA_SHADOW_DIR` | `<DSH_HOME>/strata` | 存档根目录 |
+| `STRATA_SHADOW_DIR` | `<DSH_HOME>/strata` | 存档根目录（设置页：存档位置） |
+| `STRATA_ARCHIVE_MAX_MB` | 1024 | 所有存档加起来超过这个值时提醒；`0` 不提醒；不会删除任何文件 |
+| `STRATA_ARCHIVE_KEEP_DAYS` | 0 | 删除超过这么多天没用过的已结束会话的存档；`0` 从不删除 |
 | `STRATA_SHADOW_MAX_MB` | 128 | 存档上限，最旧的会话先轮换出去 |
 | `STRATA_IGNORE_CONFLICTS` | 不设 | 设为 `1` 跳过接管检查（不建议） |
 
