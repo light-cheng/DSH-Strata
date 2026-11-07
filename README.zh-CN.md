@@ -135,7 +135,7 @@ DSH 插件页里 Strata 分层上下文的详情下面有 **Strata 设置**（We
 | `STRATA_PRESET` | cost | 模式（`cost`、`quality` 或 `custom`；优先于设置页）。`cost`：用下面的线，只在轮末折叠（缓存未命中少，带的上下文多）。`quality`：自动折叠线 25%、强制线 35%、目标 15%，并在轮次中途摘录。显式设置的 `STRATA_*` 值优先于预设 |
 | `STRATA_NUDGE` | on | `off`：不再提醒模型折叠，折叠交给自动摘录（较低那条线也就不再要求提醒没有回应）。`compress` 工具照常可用 |
 | `STRATA_MID_TURN_FOLD` | `quality` 下为 on | 只在 `quality` 预设下生效：在一步之前、超过强制线时，摘录当前轮之前的各轮（当前运行时上下文不动）；`off` 只在轮末折叠 |
-| `STRATA_MID_TURN_CURRENT` | off | 设为 `on` 开启（实测验证前默认关闭）。只在 `quality` 预设且开启中途摘录时生效：之前各轮摘录完后，再摘录当前轮已完成的工具回合，从旧到新，每个回合整体处理（调用和它的全部结果）。受保护尾部、本轮的用户消息、正在进行的那一步和当前运行时上下文都不动；`off` 让中途摘录只处理之前的轮 |
+| `STRATA_MID_TURN_CURRENT` | `quality` 下为 on | 只在 `quality` 预设且开启中途摘录时生效：之前各轮摘录完后，再摘录当前轮已完成的工具回合，从旧到新，每个回合整体处理（调用和它的全部结果）。受保护尾部、本轮的用户消息、正在进行的那一步和当前运行时上下文都不动；`off` 让中途摘录只处理之前的轮。这类摘录会告诉模型这些调用已经执行过，输出可以用 `decompress` 取回 |
 | `STRATA_AUTO_FOLD` | on | 设为 `off` 关闭自动摘录 |
 | `STRATA_AUTO_FOLD_PCT` / `STRATA_AUTO_FOLD_AFTER_NUDGES` | 0.5（`quality` 0.25）/ 2 | 超过窗口这个比例、且这么多次提醒没有回应时自动摘录 |
 | `STRATA_AUTO_FOLD_FORCE_PCT` | 0.6（`quality` 0.35） | 超过这个比例时不论提醒都自动摘录 |
