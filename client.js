@@ -159,11 +159,21 @@ window.__ModuleLoader__.load({
       return value >= 1000 ? `${(value / 1000).toFixed(1)}K` : String(Math.round(value))
     }
 
-    async function fetchStatus(sessionId) {
-      const url = new URL(`${STATUS_PATH}?session=${encodeURIComponent(sessionId)}`, document.baseURI)
+    async function fetchStatus(sessionId, lang) {
+      const url = new URL(`${STATUS_PATH}?session=${encodeURIComponent(sessionId)}${lang ? `&lang=${encodeURIComponent(lang)}` : ''}`, document.baseURI)
       const response = await fetch(url.toString(), { credentials: 'same-origin', headers: { accept: 'application/json' } })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       return response.json()
+    }
+
+    /** The active UI language id, sent with each poll so /strata answers in it. */
+    function activeLanguage(ctx) {
+      try {
+        const active = ctx.locale?.getLocale?.()?.active
+        return typeof active === 'string' ? active : active?.id || ''
+      } catch {
+        return ''
+      }
     }
 
     const RANK = { ctx: 0, L1: 1, L2: 2, 'L∞': 3 }
@@ -208,7 +218,7 @@ window.__ModuleLoader__.load({
         let live = true
         const load = async () => {
           try {
-            const next = await fetchStatus(sessionId)
+            const next = await fetchStatus(sessionId, activeLanguage(ctx))
             if (!live) return
             setData(next)
             setFailed(false)

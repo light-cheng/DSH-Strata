@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { addToolRound, addUser, fakeAgent, fakeContext, FakeSession, filler } from "./helpers/fake-dsh.mjs";
+import { setUiLanguage } from "../lib/command.js";
 
 const root = mkdtempSync(join(tmpdir(), "strata-fallback-"));
 process.env.STRATA_SHADOW_DIR = root;
@@ -131,10 +132,13 @@ test("tools row with the Strata engine: tools, guidance, /strata, nudge on pre-s
   assert.equal(sections[0].interpolate, false);
   assert.equal(sections[0].text, tools.STRATA_GUIDANCE, "guidance is a fixed constant (stable prefix)");
   const agent = fakeAgent(new FakeSession({ id: "s-cmd" }));
-  assert.match(commands[0].handler({ rawInput: "", agent }).text, /Strata Context: active/);
+  setUiLanguage("en");
+  assert.match(commands[0].handler({ rawInput: "", agent }).text, /\/strata commands/);
+  assert.match(commands[0].handler({ rawInput: "status", agent }).text, /Strata Context: active/);
   assert.equal(commands[0].handler({ rawInput: "bogus", agent }).kind, "error");
   assert.match(commands[0].handler({ rawInput: "search anything", agent }).text, /No archived context/);
-  assert.match(commands[0].handler({ rawInput: "purge", agent }).text, /Deleted 0 archive files/);
+  assert.match(commands[0].handler({ rawInput: "purge", agent }).text, /purge confirm/);
+  assert.match(commands[0].handler({ rawInput: "purge confirm", agent }).text, /Deleted 0 archive files/);
   const [preStep] = ctx.handlers.get("agent/pre-step");
   const decision = { kind: "enter", messages: [{ role: "user", content: [] }] };
   const out = await preStep({ agent, signal: new AbortController().signal }, async () => decision);
