@@ -216,3 +216,22 @@ test("purge ended: warns first, deletes only ended sessions' archives on confirm
   assert.ok(existsSync(join(own, "fold-f1.json")), "this session's archive stays");
   assert.match(runCommand(layer, agent, "help", { language: "zh" }).text, /\/strata purge ended[\s　]+清理已结束会话的归档/);
 });
+
+test("detail: mid-turn result line, localized, only when mid-turn digests are on", () => {
+  const { layer, agent } = setup();
+  const state = layer.state(agent);
+  assert.doesNotMatch(runCommand(layer, agent, "detail", { language: "zh" }).text, /轮中摘要/, "cost mode: no line");
+  layer.settings = { ...layer.settings, midTurnFold: true, midTurnCurrent: true };
+  assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /轮中摘要[\s　]+已落地 0 次（其中本轮 0 次）；最近：还没有/);
+  state.midTurnLanded = 3;
+  state.midTurnCurrentLanded = 2;
+  state.lastMidTurnFold = { at: 1, outcome: "landed f4, f5 before a step (f5 at 36.2% (target ~150.0K; f5 in the current turn))" };
+  const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(zh, /轮中摘要[\s　]+已落地 3 次（其中本轮 2 次）；最近：一步之前已落地 f4, f5（此时 36\.2%，目标 约 150\.0K；f5 在本轮）/);
+  const en = runCommand(layer, agent, "detail", { language: "en" }).text;
+  assert.match(en, /Mid-turn digests\s+3 landed \(2 in the current turn\); last: landed f4, f5 before a step \(at 36\.2%, target ~150\.0K; f5 in the current turn\)/);
+  layer.settings = { ...layer.settings, midTurnCurrent: false };
+  assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /轮中摘要[\s　]+已落地 3 次；最近：/);
+  state.lastMidTurnFold = { at: 2, outcome: "skipped (30.0%: below 35.0%)" };
+  assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /最近：跳过（30\.0%，低于 35\.0%）/);
+});

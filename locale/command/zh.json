@@ -100,7 +100,11 @@
     "ruleMidTurnCurrent": "；一轮中途超过 {force} 时也会先摘要之前几轮，再摘要本轮已完成的工具轮次",
     "warnConfig": "DSH 的自动压缩对 {target} 已关闭：{message}",
     "warnOfficial": "DSH 官方摘要（L∞）已连续失败 {count} 次：{message}",
-    "officialOff": "已关闭（见上方警告）"
+    "officialOff": "已关闭（见上方警告）",
+    "midTurn": "轮中摘要",
+    "midTurnValue": "已落地 {landed} 次{current}；最近：{last}",
+    "midTurnCurrent": "（其中本轮 {count} 次）",
+    "midTurnNone": "还没有"
   },
   "purgeEnded": {
     "warning": "/strata purge ended 会删除已结束会话的本地存档：{sessions} 个会话，{mb} MB（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），且无法撤销。之后再打开这些会话，它们的折叠和卡片原文无法从存档还原（DSH 会话日志里仍有原始事件）。",
@@ -145,6 +149,8 @@
     "pressured": "（超过自动折叠线）",
     "landedMidTurn": "一步之前已落地 {ids}（{rest}）",
     "error": "出错：{message}",
-    "sep": "；"
+    "sep": "；",
+    "midTurnAt": "此时 {ratio}，目标 约 {target}{stop}",
+    "inCurrent": "；{ids} 在本轮"
   }
 }
