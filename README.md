@@ -115,7 +115,8 @@ Nothing needs to be configured; the defaults are tuned for a 1M-token window. St
 | `STRATA_NUDGE_REARM_RATIO` / `STRATA_NUDGE_FORCED_REARM_RATIO` | 0.5 / 0.25 | An unanswered reminder repeats after this share of the growth step (below / above `STRATA_FORCE_PCT`) |
 | `STRATA_PRESET` | cost | `cost`: the lines below, folds only at turn end (fewer cache misses, more context carried). `quality`: automatic-fold line 25 %, force line 35 %, target 15 %, and mid-turn digests. Explicit `STRATA_*` values override the preset |
 | `STRATA_NUDGE` | on | `off`: no fold reminders to the model; folding is left to automatic digests (the lower line then needs no unanswered reminders). `compress` stays available |
-| `STRATA_MID_TURN_FOLD` | on in `quality` | `quality` preset only: before a step, above the force line, digest the turns before the current one (the current turn, its call/result pairs and the live runtime context stay); `off` keeps folds at turn end |
+| `STRATA_MID_TURN_FOLD` | on in `quality` | `quality` preset only: before a step, above the force line, digest the turns before the current one (the live runtime context stays); `off` keeps folds at turn end |
+| `STRATA_MID_TURN_CURRENT` | off | `quality` preset only (`on` to enable; off by default until validated live), with mid-turn digests: once the earlier turns are digested, also digest the current turn's finished tool rounds, oldest first, each round whole (the call and all its results). The protected tail, the turn's user message, the step in flight and the live runtime context stay; `off` keeps mid-turn digests to earlier turns |
 | `STRATA_AUTO_FOLD` | on | `off` disables automatic digests |
 | `STRATA_AUTO_FOLD_PCT` / `STRATA_AUTO_FOLD_AFTER_NUDGES` | 0.5 (`quality` 0.25) / 2 | Automatic digest above this share of the window after this many unanswered reminders |
 | `STRATA_AUTO_FOLD_FORCE_PCT` | 0.6 (`quality` 0.35) | Automatic digest above this share regardless of reminders |

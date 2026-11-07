@@ -68,6 +68,13 @@ test("presets: cost is the default; quality lowers the lines and enables mid-tur
   assert.equal(readSettings({ STRATA_MID_TURN_FOLD: "on" }).midTurnFold, false, "cost stays turn-end only");
   assert.equal(readSettings({ STRATA_PRESET: "quality", STRATA_AUTO_FOLD_TARGET_PCT: "0.2" }).autoFoldTargetPct, 0.2);
   assert.equal(readSettings({ STRATA_NUDGE: "off" }).nudge, false);
+  // Current-turn digests: quality only, on by default, off with either flag.
+  assert.equal(cost.midTurnCurrent, false);
+  assert.equal(quality.midTurnCurrent, false, "off until validated live");
+  assert.equal(readSettings({ STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "on" }).midTurnCurrent, true);
+  assert.equal(readSettings({ STRATA_MID_TURN_CURRENT: "on" }).midTurnCurrent, false, "cost never folds the current turn");
+  assert.equal(readSettings({ STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "off" }).midTurnCurrent, false);
+  assert.equal(readSettings({ STRATA_PRESET: "quality", STRATA_MID_TURN_FOLD: "off", STRATA_MID_TURN_CURRENT: "on" }).midTurnCurrent, false);
 });
 
 test("digest unit is a tool round: many small rounds land within ~1% of the target, not a whole turn over it", async () => {
@@ -120,7 +127,7 @@ test("the walk stops before a round that would overshoot the target by more than
 
 /** Three earlier turns, then a current turn that grows past the quality force line. */
 function midTurnSession(env = {}) {
-  const s = setup({ STRATA_PRESET: "quality", ...env });
+  const s = setup({ STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "on", ...env });
   const { session, layer, agent } = s;
   addSnapshot(s.session, "OLD_RECALL");
   for (let t = 0; t < 3; t += 1) turn(session, `old${t}`, 6, 16_000);
@@ -133,8 +140,8 @@ function midTurnSession(env = {}) {
   return { ...s, live: live.seq };
 }
 
-test("mid-turn: only earlier turns fold; the current turn's call/result pairs and the live snapshot stay", async () => {
-  const { session, agent, layer, live } = midTurnSession();
+test("mid-turn (STRATA_MID_TURN_CURRENT=off): only earlier turns fold; the current turn's call/result pairs and the live snapshot stay", async () => {
+  const { session, agent, layer, live } = midTurnSession({ STRATA_MID_TURN_CURRENT: "off" });
   const before = layer.layout(session);
   const currentSeqs = before.rows.slice(before.turnStart).map((row) => row.seq);
   layer.state(agent).nudgedAt = 123;
@@ -196,8 +203,9 @@ test("mid-turn runs in the pressure path before L∞; L∞ runs only if the dige
   const original = stock.compactIfNeeded;
   const calls = [];
   try {
-    for (const [label, currentRounds] of [["enough", 8], ["not enough", 40]]) {
-      const s = setup({ STRATA_PRESET: "quality" });
+    // "not enough": earlier turns only; "current": the same turn, with its finished rounds digested too.
+    for (const [label, currentRounds, env] of [["enough", 8, {}], ["not enough", 40, { STRATA_MID_TURN_CURRENT: "off" }], ["current", 40, { STRATA_MID_TURN_CURRENT: "on" }]]) {
+      const s = setup({ STRATA_PRESET: "quality", ...env });
       const { session, layer, agent, engine } = s;
       for (let t = 0; t < 3; t += 1) turn(session, `old${t}`, 6, 16_000);
       session.append("turn/start", { turn: `turn-${label}` });
@@ -217,9 +225,10 @@ test("mid-turn runs in the pressure path before L∞; L∞ runs only if the dige
   } finally {
     stock.compactIfNeeded = original;
   }
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.equal(calls[0].ran, false, `digests were enough: ${calls[0].ratio}`);
   assert.equal(calls[1].ran, true, `the current turn alone is above the L∞ line: ${calls[1].ratio}`);
+  assert.equal(calls[2].ran, false, `current-turn digests keep it under the L∞ line: ${calls[2].ratio}`);
 });
 
 test("turn end: later passes use the estimated total, not DSH's total still anchored on the last request", async () => {
@@ -247,4 +256,127 @@ test("turn end: later passes use the estimated total, not DSH's total still anch
   const after = layer.layout(session);
   const target = 0.15 * window;
   assert.ok(Math.abs(after.totalTokens - target) <= 0.03 * window, `near the 15% target, not far below it: ${(after.totalTokens / window * 100).toFixed(1)}%`);
+});
+
+/** Seqs of each tool round (the call message and its results) in surface order, from `from`. */
+function roundsOf(session, fromSeq) {
+  const rounds = [];
+  for (const seq of session.surface.nodes) {
+    if (seq < fromSeq) continue;
+    const event = session.eventAt(seq);
+    const calls = (event?.data?.message?.content || []).filter((block) => block?.type === "tool-call");
+    if (event?.type === "assistant/message" && calls.length) rounds.push([seq]);
+    else if (event?.type === "tool/result" && rounds.length) rounds.at(-1).push(seq);
+  }
+  return rounds;
+}
+
+test("current turn: earlier turns first, then this turn's finished rounds, each whole; the tail, the user message and the live snapshot stay", async () => {
+  const { session, agent, layer, live } = midTurnSession();
+  const before = layer.layout(session);
+  const userSeq = before.rows[before.turnStart].seq;
+  const tailSeqs = before.rows.slice(before.protectFrom).map((row) => row.seq);
+  const currentRounds = roundsOf(session, userSeq);
+  layer.state(agent).nudgedAt = 123;
+  layer.state(agent).unanswered = 2;
+  const landed = await layer.midTurnFold(agent);
+  assert.ok(landed.length >= 2, `digests landed: ${layer.state(agent).lastMidTurnFold?.outcome}`);
+  const after = layer.layout(session);
+  assertPaired(session);
+  assert.ok(session.surface.nodes.includes(userSeq), "the turn's user message stays");
+  assert.ok(session.surface.nodes.includes(live), "the live snapshot stays");
+  for (const seq of tailSeqs) assert.ok(session.surface.nodes.includes(seq), `protected tail node ${seq} stays`);
+  // Each current-turn round is either all on the surface or all folded.
+  let foldedRounds = 0;
+  for (const round of currentRounds) {
+    const present = round.filter((seq) => session.surface.nodes.includes(seq)).length;
+    assert.ok(present === 0 || present === round.length, `round ${round[0]} whole (${present}/${round.length})`);
+    if (present === 0) foldedRounds += 1;
+  }
+  assert.ok(foldedRounds >= 1 && foldedRounds < currentRounds.length, `some current rounds folded (${foldedRounds}/${currentRounds.length})`);
+  // Folded rounds are the oldest ones of the turn, and every older turn went first.
+  const presentFlags = currentRounds.map((round) => session.surface.nodes.includes(round[0]));
+  assert.deepEqual(presentFlags, presentFlags.map((_, i) => i >= foldedRounds), "oldest rounds fold first");
+  assert.equal(after.rows.slice(0, after.turnStart).filter((row) => row.stratum === "raw" && row.role === "tool").length, 0, "older turns digested before the current one");
+  const folds = after.rows.filter((row) => row.stratum === "fold");
+  assert.ok(folds.some((row) => row.index > after.turnStart), "a digest sits inside the current turn");
+  assert.ok(folds.every((row) => row.index < after.protectFrom));
+  // The compaction events belong to the open turn.
+  const lifecycle = session.events.filter((event) => event.type === "compaction/start" || event.type === "compaction/end");
+  assert.ok(lifecycle.length >= 2 && lifecycle.every((event) => event.data.turn === "turn-current"));
+  // Bookkeeping: model folds untouched, baseline and autoFoldedAt at the new foldable, nudges reset.
+  const state = layer.state(agent);
+  assert.equal(state.pending.length, 0);
+  assert.equal(state.baseline, foldableTokens(after));
+  assert.equal(state.autoFoldedAt, state.baseline);
+  assert.equal(state.nudgedAt, null);
+  assert.equal(state.unanswered, 0);
+  assert.equal(state.lastAutoFold, undefined);
+  assert.match(layer.status(agent), /Mid-turn digests \(before a step, above 35%, earlier turns first, then this turn's finished rounds outside the protected tail\): \d+ landed/);
+  // A folded current-turn round restores word for word.
+  assert.ok(landed.some((id) => /img-\d line with some content/.test(layer.decompress(agent, { id }))));
+});
+
+test("current turn: the step in flight (a call still waiting for a result) and the newest round are never folded", async () => {
+  const { session, agent, layer } = midTurnSession({ STRATA_PROTECTED_TAIL_PCT: "0.001" });
+  // The newest round has two parallel calls; one result is still out.
+  const call = session.append("assistant/message", {
+    turn: 1,
+    message: { role: "assistant", content: [{ type: "tool-call", id: "fly-1", name: "read_image", arguments: { command: "a.png" } }, { type: "tool-call", id: "fly-2", name: "read_image", arguments: { command: "b.png" } }] },
+  });
+  const result = session.append("tool/result", { turn: 1, message: { role: "tool", toolCallId: "fly-1", content: [{ type: "text", text: filler("fly", 40_000) }] } });
+  const before = layer.layout(session);
+  assert.ok(before.tail.capped, "the cap leaves only the newest round in the tail");
+  assert.equal(before.rows[before.protectFrom].seq, call.seq);
+  const landed = await layer.midTurnFold(agent);
+  assert.ok(landed.length >= 1);
+  assert.ok(session.surface.nodes.includes(call.seq) && session.surface.nodes.includes(result.seq), "the step in flight stays");
+  const after = layer.layout(session);
+  const callIndex = after.rows.find((row) => row.seq === call.seq).index;
+  assert.ok(after.rows.filter((row) => row.stratum === "fold").every((row) => row.index < callIndex));
+  // Every earlier current-turn round is whole: folded or not.
+  for (const round of roundsOf(session, 0).filter((r) => r[0] < call.seq)) {
+    const present = round.filter((seq) => session.surface.nodes.includes(seq)).length;
+    assert.ok(present === 0 || present === round.length);
+  }
+});
+
+test("current turn: a stale snapshot inside the turn may fold; the live one stays", async () => {
+  const { session, agent, layer, live } = midTurnSession();
+  // A newer snapshot mid-turn makes the earlier one stale.
+  for (let i = 0; i < 2; i += 1) addToolRound(session, { name: "read_image", command: `more/${i}.png`, output: filler(`more-${i}`, 16_000) });
+  const newest = addSnapshot(session, "NEWER_RECALL");
+  for (let i = 0; i < 3; i += 1) addToolRound(session, { name: "read_image", command: `last/${i}.png`, output: filler(`last-${i}`, 16_000) });
+  layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.45);
+  const landed = await layer.midTurnFold(agent);
+  assert.ok(landed.length >= 1);
+  assert.ok(session.surface.nodes.includes(newest.seq), "the live snapshot stays");
+  assert.equal(layer.layout(session).rows.find((row) => row.seq === newest.seq).live, true);
+  assert.ok(!session.surface.nodes.includes(live), "the stale one folded with its rounds");
+  assertPaired(session);
+});
+
+test("current turn: off with STRATA_MID_TURN_CURRENT=off; L1's next cut after a current-turn digest stays behind it", async () => {
+  {
+    const { session, agent, layer } = midTurnSession({ STRATA_MID_TURN_CURRENT: "off" });
+    const turnStart = layer.layout(session).turnStart;
+    const currentSeqs = layer.layout(session).rows.slice(turnStart).map((row) => row.seq);
+    await layer.midTurnFold(agent);
+    for (const seq of currentSeqs) assert.ok(session.surface.nodes.includes(seq));
+  }
+  const { engine, session, agent, layer } = midTurnSession();
+  const landed = await layer.midTurnFold(agent);
+  const turnStart = layer.layout(session).turnStart;
+  const midFolds = layer.layout(session).rows.filter((row) => row.stratum === "fold" && row.index > turnStart).map((row) => row.seq);
+  assert.ok(midFolds.length >= 1);
+  // The turn goes on and ends; turn-end L2 and L1 run.
+  for (let i = 0; i < 6; i += 1) addToolRound(session, { name: "bash", command: `pwsh -c tail ${i}`, output: filler(`tail-${i}`, 12_000) });
+  addAssistantText(session, "done");
+  session.append("turn/end", { turn: "turn-current" });
+  await engine.finishTurn(agent);
+  assertPaired(session);
+  const rows = layer.layout(session).rows;
+  const lastFold = Math.max(...rows.filter((row) => row.stratum === "fold").map((row) => row.index));
+  for (const card of rows.filter((row) => row.stratum === "card")) assert.ok(card.index > lastFold, "L1 cuts only after the newest fold");
+  for (const id of landed) assert.match(layer.decompress(agent, { id }), /line with some content/);
 });
