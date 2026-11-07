@@ -50,18 +50,22 @@ export function summarize(r) {
     closed: r.asked.closed.correct,
     open: r.asked.open.correct,
     openTools: r.asked.open.tools,
+    heavyFaults: r.heavyFaults ?? null,
+    heavySteps: r.heavySteps ?? null,
+    reload: r.reload ? { tagErrors: r.reload.turnTagErrors.length, heavyDigests: r.reload.heavyDigests.length, decompress: r.reload.decompress ? `${r.reload.decompress.found.length}/${r.reload.decompress.expected.length}` : "-" } : null,
     missed: { closed: r.asked.closed.score.filter((s) => !s.ok).map((s) => s.id), open: r.asked.open.score.filter((s) => !s.ok).map((s) => s.id) },
   };
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
   const rows = process.argv.slice(2).map((file) => ({ file, s: summarize(JSON.parse(readFileSync(file, "utf8"))) }));
-  console.log("| arm | requests | mean peak | max peak | miss | hit | cost (miss+0.1·hit) | cost/request | output | re-billed | reclaimed | folds auto/model/card/L∞ | mid-turn | closed | open |");
-  console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
-  for (const { s } of rows) console.log(`| ${s.arm} | ${s.requests} | ${pct(s.meanPeak)} | ${pct(s.maxPeak)} | ${k(s.miss)} | ${k(s.hit)} | ${k(s.cost)} | ${k(s.costPerRequest)} | ${k(s.output)} | ${k(s.rebilled)} | ${k(s.reclaimed)} | ${s.folds.auto}/${s.folds.model}/${s.folds.card}/${s.folds.official} | ${s.midTurn} | ${s.closed}/12 | ${s.open}/12 |`);
+  console.log("| arm | requests | mean peak | max peak | miss | hit | cost (miss+0.1·hit) | cost/request | output | re-billed | reclaimed | folds auto/model/card/L∞ | mid-turn | closed | open | heavy FAULTs |");
+  console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const { s } of rows) console.log(`| ${s.arm} | ${s.requests} | ${pct(s.meanPeak)} | ${pct(s.maxPeak)} | ${k(s.miss)} | ${k(s.hit)} | ${k(s.cost)} | ${k(s.costPerRequest)} | ${k(s.output)} | ${k(s.rebilled)} | ${k(s.reclaimed)} | ${s.folds.auto}/${s.folds.model}/${s.folds.card}/${s.folds.official} | ${s.midTurn} | ${s.closed}/12 | ${s.open}/12 | ${s.heavyFaults ?? "-"}/${s.heavySteps ?? "-"} |`);
   for (const { s } of rows) {
     console.log(`\n${s.arm}: occupancy per turn (first → peak → last, provider)`);
     console.log(s.perTurn.map((t) => `${t.label} ${pct(t.first / 1e6)}→${pct(t.peak / 1e6)}→${pct(t.last / 1e6)} (+${k(t.growth)}, ${t.requests} req)`).join("\n"));
+    if (s.reload) console.log(`reload: compaction turn-tag errors ${s.reload.tagErrors}; heavy-turn digests ${s.reload.heavyDigests}; decompress after reload ${s.reload.decompress}`);
     console.log(`missed closed ${s.missed.closed.join(",") || "-"}; open ${s.missed.open.join(",") || "-"}; open tools ${s.openTools.join(" ") || "none"}`);
   }
 }

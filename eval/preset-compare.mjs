@@ -9,10 +9,14 @@
 //   then the workspace is deleted and the 12 questions are asked closed-book (on a
 //   copy of the DSH home) and open-book (decompress / search_context allowed).
 //
+// After the asks, a reload check: every compaction event carries the turn that
+// was open when it was written, and a new dsh process restores a digest that
+// landed inside the heavy turn with decompress.
+//
 // Recorded: every request's prompt size and cache split (from dsh --json usage),
 // Strata's turn-end / after-flush / mid-turn trace, folds, recall.
 //
-//   PRESET_ARM=cost|quality|quality-nonudge|quality-nomid PRESET_REP=1 \
+//   PRESET_ARM=cost|quality|quality-nonudge|quality-nomid|quality-current PRESET_REP=1 \
 //   DSH_BIN=… DSH_EVAL_PATCH=magpie.patch.yml DEEPSEEK_BASE_URL=http://127.0.0.1:3425/v1 \
 //   DEEPSEEK_API_KEY=local node eval/preset-compare.mjs
 
@@ -39,6 +43,7 @@ const ARMS = {
   quality: { STRATA_PRESET: "quality" },
   "quality-nonudge": { STRATA_PRESET: "quality", STRATA_NUDGE: "off" },
   "quality-nomid": { STRATA_PRESET: "quality", STRATA_MID_TURN_FOLD: "off" },
+  "quality-current": { STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "on" },
 };
 // Extra STRATA_* overrides for tuning runs: PRESET_ENV="STRATA_AUTO_FOLD_PCT=0.3,STRATA_AUTO_FOLD_TARGET_PCT=0.2".
 const extra = Object.fromEntries(String(process.env.PRESET_ENV || "").split(",").filter(Boolean).map((pair) => pair.split("=")));
@@ -191,6 +196,9 @@ if (HEAVY > 0) {
   const steps = Array.from({ length: HEAVY }, (_, k) => `\`python3 tools/dump.py ${k}\``).join(", ");
   turns.push(turn(h, `Run these commands one at a time, one tool call per step, in this order (no parallel calls, do not shorten the output): ${steps}. Then reply with one line per command: its number and the FAULT code it printed.`, "heavy"));
 }
+// The heavy turn's own recall: the FAULT code of every step, in its final reply.
+const heavyTurn = turns.find((t) => t.label === "heavy");
+const heavyFaults = heavyTurn ? Array.from({ length: HEAVY }, (_, n) => `F${7700 + n}`).filter((code) => heavyTurn.final.includes(code)).length : 0;
 const events = sessionEvents(h);
 const foldTexts = events.filter((e) => e.type === "compaction/summary").map((e) => (e.data?.summary || []).map((b) => b.text || "").join("\n"));
 for (const sub of ["config", "docs", "logs", "tools", "build", "app", "vendor", "tests"]) rmSync(join(cwd, sub), { recursive: true, force: true });
@@ -203,6 +211,46 @@ for (const mode of ["closed", "open"]) {
   asked[mode] = { correct: s.filter((x) => x.ok).length, score: s, tools: t.tools, usage: t.usage };
   console.log(`${ARM}-${REP} ${mode}: ${asked[mode].correct}/12`);
 }
+// Reload check. Compaction events must carry the turn open when they were written.
+function turnTags(list) {
+  let open = null;
+  const bad = [];
+  for (const e of list) {
+    if (e.type === "turn/start") open = e.data?.turn ?? e.data?.turnId ?? null;
+    else if (e.type === "turn/end") open = null;
+    else if (e.type === "compaction/start" || e.type === "compaction/end") {
+      const tag = e.data?.turn ?? null;
+      if (tag !== open) bad.push({ seq: e.seq, type: e.type, tag, open });
+    }
+  }
+  return bad;
+}
+// Digests that landed inside the heavy turn over its own rounds (mid-turn, current turn).
+function heavyDigests(list) {
+  const out = [];
+  let inHeavy = false;
+  for (const e of list) {
+    if (e.type === "user/message" && /tools\/dump\.py/.test(JSON.stringify(e.data?.content || ""))) inHeavy = true;
+    else if (e.type === "turn/end") inHeavy = false;
+    else if (inHeavy && e.type === "compaction/summary" && e.data?.model === "strata-fold") {
+      const text = (e.data?.summary || []).map((b) => b.text || "").join("\n");
+      const id = text.match(/\[strata:fold\S* id=(\S+?)[\s\]]/)?.[1];
+      const codes = [...new Set(text.match(/dump\.py \d+/g) || [])].map((m) => `F${7700 + Number(m.split(" ")[1])}`);
+      if (id && codes.length) out.push({ id, codes });
+    }
+  }
+  return out;
+}
+const reload = { turnTagErrors: turnTags(events), heavyDigests: heavyDigests(events) };
+if (reload.heavyDigests.length) {
+  const target = reload.heavyDigests[0];
+  const t = turn(h, `Call decompress with id ${target.id} (only that tool, once). Then reply with every FAULT code in the restored text, comma-separated.`, "reload-decompress");
+  reload.decompress = { id: target.id, status: t.status, tools: t.tools, expected: target.codes, found: target.codes.filter((code) => t.final.includes(code)) };
+  const after = sessionEvents(h);
+  reload.loadedEvents = after.length;
+  reload.turnTagErrorsAfter = turnTags(after);
+}
+console.log(`${ARM}-${REP} reload: tag errors ${reload.turnTagErrors.length}, heavy digests ${reload.heavyDigests.length}, decompress ${reload.decompress ? `${reload.decompress.found.length}/${reload.decompress.expected.length}` : "-"}, heavy faults ${heavyFaults}/${HEAVY}`);
 const traceRows = existsSync(trace) ? readFileSync(trace, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 const results = {
   arm: ARM,
@@ -218,6 +266,9 @@ const results = {
     return { seq: e.seq, kind, model: e.data?.model, provider: e.data?.provider, shadowed: e.data?.shadowedTokenCount, chars: text.length, head: text.slice(0, 160) };
   }),
   asked,
+  heavyFaults,
+  heavySteps: HEAVY,
+  reload,
 };
 writeFileSync(join(work, `results-${ARM}-${REP}.json`), JSON.stringify(results, null, 2));
 // Temp DSH homes go; the results JSON stays.
