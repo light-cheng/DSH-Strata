@@ -104,6 +104,15 @@ test("detail layers: numbers right-aligned in one column, CJK counted double", (
   const start = zh.indexOf("2. 分层（本地估算）");
   const layerRows = zh.slice(start + 1, start + 11);
   assert.equal(new Set(layerRows.map((line) => displayWidth(line))).size, 1, layerRows.join("\n"));
+  // In the web view a CJK character is 1em and a Latin one 0.6em, so each row
+  // must hold the same number of each kind, not just the same terminal width.
+  const kinds = (line) => {
+    const wide = [...line].filter((char) => displayWidth(char) === 2).length;
+    return `${[...line].length - wide}/${wide}`;
+  };
+  assert.equal(new Set(layerRows.map(kinds)).size, 1, layerRows.join("\n"));
+  const overview = zh.slice(zh.indexOf("1. 概览") + 1, zh.indexOf("1. 概览") + 5).map((line) => line.slice(0, line.search(/ {3}\S/) + 3));
+  assert.equal(new Set(overview.map(kinds)).size, 1, overview.join("\n"));
 });
 
 test("ledger: running totals per session, net saving from requests since each change", () => {
