@@ -221,3 +221,30 @@ test("mid-turn runs in the pressure path before L∞; L∞ runs only if the dige
   assert.equal(calls[0].ran, false, `digests were enough: ${calls[0].ratio}`);
   assert.equal(calls[1].ran, true, `the current turn alone is above the L∞ line: ${calls[1].ratio}`);
 });
+
+test("turn end: later passes use the estimated total, not DSH's total still anchored on the last request", async () => {
+  const { ctx, session, agent, layer } = setup({ STRATA_PRESET: "quality", STRATA_NUDGE: "off" });
+  const base = ctx.tokenMeter;
+  // DSH re-anchors its total on the next request; until then a landing does not show in it.
+  let anchored = null;
+  let generation = session.surface.replaceGeneration;
+  ctx.tokenMeter = { ...base, measure: (s) => {
+    const m = base.measure(s);
+    const real = m.totalTokens * 2;
+    if (s.surface.replaceGeneration !== generation && anchored != null) return { ...m, surfaceTokens: m.totalTokens, totalTokens: anchored };
+    anchored = real;
+    return { ...m, surfaceTokens: m.totalTokens, totalTokens: real };
+  } };
+  const get = ctx.get?.bind(ctx);
+  ctx.get = (name) => (name === "sessionProjections" ? { snapshot: () => ({ values: { contextBreakdown: { systemTokens: 0, toolsTokens: 0, messageTokens: 0 } } }) } : get?.(name));
+  for (let t = 0; t < 3; t += 1) turn(session, `t${t}`, 18, 16_000);
+  layer.state(agent).window = Math.round(layer.layout(session).totalTokens / 0.53);
+  const window = layer.state(agent).window;
+  const landed = await layer.turnEnd(agent);
+  assert.ok(landed.length >= 2);
+  generation = session.surface.replaceGeneration;
+  anchored = null; // the next request re-anchors
+  const after = layer.layout(session);
+  const target = 0.15 * window;
+  assert.ok(Math.abs(after.totalTokens - target) <= 0.03 * window, `near the 15% target, not far below it: ${(after.totalTokens / window * 100).toFixed(1)}%`);
+});
