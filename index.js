@@ -11,7 +11,7 @@ import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
-import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
+import { isCancellation, markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
 import { archiveRootFor, recordCard } from "./lib/archive.js";
 import { readSettings } from "./lib/settings.js";
 import { scheduleScrub } from "./lib/scrub.js";
@@ -467,7 +467,7 @@ export default class StrataEngine extends BasicCompactionEngine {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.ctx.logger?.warn?.(`strata cut failed: ${message}`);
-          recordActivityError(sessionId, "L1", message);
+          if (!isCancellation(error, op)) recordActivityError(sessionId, "L1", message, { id: chunk.card?.archiveId || "", timeout: op.reason?.name === "TimeoutError" });
         }
         if (!reduced) {
           this.ctx.logger?.warn?.(`strata cut did not reduce ${before}; leaving the prefix for the gate`);
