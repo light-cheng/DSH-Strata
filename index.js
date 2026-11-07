@@ -586,6 +586,23 @@ export default class StrataEngine extends BasicCompactionEngine {
     state.liveAgent = agent;
     state.localOnly = false;
     this.ensurePruneGuard();
+    // Quality preset: digests of earlier turns land before a step, ahead of L∞
+    // (which then runs only if they were not enough).
+    if (trigger === "pressure" && this.strataLayer?.settings.midTurnFold && !signal?.aborted) {
+      try {
+        const layer = this.strataLayer;
+        await layer.resolveWindow(agent, signal);
+        const landed = await layer.midTurnFold(agent, signal);
+        if (landed.length) {
+          layer.traceMeasure(agent, "mid-turn");
+          await this.ctx.sessions?.flush?.(agent.session);
+          this.rememberPrefix(agent);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.ctx.logger?.warn?.(`strata mid-turn fold skipped: ${message}`);
+      }
+    }
     let result;
     try {
       result = await super.compactIfNeeded(agent, trigger, signal);
