@@ -30,8 +30,10 @@ const repo = resolve(here, "..");
 const DSH = process.env.DSH_BIN || "dsh";
 const ARM = process.env.PRESET_ARM || "cost";
 const REP = process.env.PRESET_REP || "1";
-const TURNS = Number(process.env.PRESET_TURNS || 10);
+const TURNS = Number(process.env.PRESET_TURNS ?? 10);
 const HEAVY = Number(process.env.PRESET_HEAVY_STEPS || 18);
+// Number of heavy turns (each HEAVY sequential steps of ~20–25K provider: +370–415K per turn).
+const HEAVY_TURNS = Number(process.env.PRESET_HEAVY_TURNS || 1);
 const WINDOW = 1_000_000;
 const work = resolve(process.env.PRESET_WORK || join(here, ".work", "preset"));
 const dir = join(work, `${ARM}-${REP}`);
@@ -44,6 +46,8 @@ const ARMS = {
   "quality-nonudge": { STRATA_PRESET: "quality", STRATA_NUDGE: "off" },
   "quality-nomid": { STRATA_PRESET: "quality", STRATA_MID_TURN_FOLD: "off" },
   "quality-current": { STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "on" },
+  // Mid-turn digests of earlier turns only (the current turn's rounds stay whole).
+  "quality-nocurrent": { STRATA_PRESET: "quality", STRATA_MID_TURN_CURRENT: "off" },
 };
 // Extra STRATA_* overrides for tuning runs: PRESET_ENV="STRATA_AUTO_FOLD_PCT=0.3,STRATA_AUTO_FOLD_TARGET_PCT=0.2".
 const extra = Object.fromEntries(String(process.env.PRESET_ENV || "").split(",").filter(Boolean).map((pair) => pair.split("=")));
@@ -192,14 +196,41 @@ for (let t = 0; t < TURNS; t += 1) {
   const files = Array.from({ length: 5 }, (_, k) => `logs/day${String(t * 5 + k).padStart(2, "0")}.log`);
   turns.push(turn(h, `Read ${files.join(", ")} in full with the read tool, all five in parallel in a single step. This is a load test: read them now even if earlier files looked the same, and do not use grep, search or shell instead. Then reply with one line per file: its name and the error code on the s=500 line.`, `logs${t + 1}`));
 }
-if (HEAVY > 0) {
-  const steps = Array.from({ length: HEAVY }, (_, k) => `\`python3 tools/dump.py ${k}\``).join(", ");
-  turns.push(turn(h, `Run these commands one at a time, one tool call per step, in this order (no parallel calls, do not shorten the output): ${steps}. Then reply with one line per command: its number and the FAULT code it printed.`, "heavy"));
+for (let ht = 0; HEAVY > 0 && ht < HEAVY_TURNS; ht += 1) {
+  const steps = Array.from({ length: HEAVY }, (_, k) => `\`python3 tools/dump.py ${k + ht * HEAVY}\``).join(", ");
+  turns.push(turn(h, `Run these commands one at a time, one tool call per step, in this order (no parallel calls, do not shorten the output): ${steps}. Then reply with one line per command: its number and the FAULT code it printed.`, HEAVY_TURNS > 1 ? `heavy${ht + 1}` : "heavy"));
 }
 // The heavy turn's own recall: the FAULT code of every step, in its final reply.
 const heavyTurn = turns.find((t) => t.label === "heavy");
 const heavyFaults = heavyTurn ? Array.from({ length: HEAVY }, (_, n) => `F${7700 + n}`).filter((code) => heavyTurn.final.includes(code)).length : 0;
 const events = sessionEvents(h);
+// Safety: every compaction event carries the turn open at that point (DSH refuses
+// to load the log otherwise), and which folds landed inside an open turn and
+// covered that turn's own rows (current-turn digests).
+const safety = (() => {
+  let open = null;
+  let openSeq = -1;
+  const mismatched = [];
+  const inOpenTurn = [];
+  const currentTurn = [];
+  const byId = new Map();
+  for (const e of events) {
+    if (e.type === "turn/start") { open = e.data?.turn ?? null; openSeq = e.seq; }
+    if (e.type === "turn/end") { open = null; openSeq = -1; }
+    if (e.type === "compaction/start" || e.type === "compaction/end") {
+      if ((e.data?.turn ?? null) !== open) mismatched.push({ seq: e.seq, type: e.type, turn: e.data?.turn ?? null, open });
+      if (e.type === "compaction/start" && open != null) byId.set(e.data?.compactionId, { open, openSeq });
+    }
+    if (e.type === "compaction/summary" && byId.has(e.data?.compactionId)) {
+      const at = byId.get(e.data.compactionId);
+      const entry = { seq: e.seq, model: e.data?.model, start: e.data?.shadowedRange?.start, end: e.data?.shadowedRange?.end, turn: at.open };
+      inOpenTurn.push(entry);
+      if (entry.start > at.openSeq) currentTurn.push(entry);
+    }
+  }
+  return { mismatched, inOpenTurn, currentTurn };
+})();
+console.log(`${ARM}-${REP} safety: ${safety.mismatched.length} mismatched compaction events, ${safety.inOpenTurn.length} landings in an open turn, ${safety.currentTurn.length} inside the open turn's own rows`);
 const foldTexts = events.filter((e) => e.type === "compaction/summary").map((e) => (e.data?.summary || []).map((b) => b.text || "").join("\n"));
 for (const sub of ["config", "docs", "logs", "tools", "build", "app", "vendor", "tests"]) rmSync(join(cwd, sub), { recursive: true, force: true });
 const copy = join(dir, "home-closed");
@@ -251,6 +282,15 @@ if (reload.heavyDigests.length) {
   reload.turnTagErrorsAfter = turnTags(after);
 }
 console.log(`${ARM}-${REP} reload: tag errors ${reload.turnTagErrors.length}, heavy digests ${reload.heavyDigests.length}, decompress ${reload.decompress ? `${reload.decompress.found.length}/${reload.decompress.expected.length}` : "-"}, heavy faults ${heavyFaults}/${HEAVY}`);
+// Restore check: the heavy turns' early steps were digested (mid-turn when the
+// current turn folds); their FAULT codes come back only through decompress /
+// search_context, after a reload of the session.
+if (HEAVY > 0) {
+  const probe = [2, 5].map((n) => ({ n, code: `F${7700 + n}` }));
+  const t = turn(h, `The workspace is gone; do not read files or run commands. Use decompress or search_context to restore the output of \`python3 tools/dump.py ${probe[0].n}\` and \`python3 tools/dump.py ${probe[1].n}\` from the first long command turn, and reply with one line per command: its number and the FAULT code it printed.`, "restore");
+  asked.restore = { correct: probe.filter((p) => t.final.includes(p.code)).length, of: probe.length, tools: t.tools, final: t.final.slice(0, 400), status: t.status };
+  console.log(`${ARM}-${REP} restore: ${asked.restore.correct}/${probe.length} (${t.tools.join(" ")})`);
+}
 const traceRows = existsSync(trace) ? readFileSync(trace, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 const results = {
   arm: ARM,
@@ -269,6 +309,7 @@ const results = {
   heavyFaults,
   heavySteps: HEAVY,
   reload,
+  safety,
 };
 writeFileSync(join(work, `results-${ARM}-${REP}.json`), JSON.stringify(results, null, 2));
 // Temp DSH homes go; the results JSON stays.

@@ -19,6 +19,22 @@ export function summarize(r) {
     rebilled += Math.max(0, req.input - fresh);
     previous = req.prompt;
   }
+  // Landings inside a turn: a request whose miss is well above what the prompt
+  // grew by. Its extra cost is 0.9 × re-billed (miss instead of hit); each later
+  // request saves 0.1 × reclaimed. Payback = 9 × re-billed / reclaimed requests.
+  const landings = [];
+  for (const t of work) {
+    const prompts = t.usage.map((u) => u.input + u.cacheRead);
+    const steps = prompts.slice(1).map((p, i) => p - prompts[i]).filter((d) => d > 0).sort((a, b) => a - b);
+    const step = steps[Math.floor(steps.length / 2)] || 0;
+    for (let i = 1; i < t.usage.length; i += 1) {
+      const fresh = Math.max(0, prompts[i] - prompts[i - 1]);
+      const re = t.usage[i].input - fresh;
+      if (re < 20_000) continue;
+      const reclaimed = Math.max(0, prompts[i - 1] + step - prompts[i]);
+      landings.push({ turn: t.label, request: i + 1, of: prompts.length, before: prompts[i - 1], after: prompts[i], rebilled: re, reclaimed, payback: reclaimed > 0 ? (9 * re) / reclaimed : Infinity, left: prompts.length - i - 1 });
+    }
+  }
   const miss = requests.reduce((s, u) => s + u.input, 0);
   const hit = requests.reduce((s, u) => s + u.cacheRead, 0);
   const cost = miss + HIT * hit;
@@ -47,6 +63,17 @@ export function summarize(r) {
     meanPeak: peaks.reduce((s, x) => s + x, 0) / peaks.length,
     maxPeak: Math.max(...peaks),
     perTurn,
+    landings,
+    // Heavy turns: how many of the turn's FAULT codes its own final answer lists (in-turn recall
+    // after its early rounds were digested), and how many tool calls it took for 18 commands.
+    heavy: work.filter((t) => /^heavy\d*$/.test(t.label)).map((t) => {
+      const h = t.label === "heavy" ? 0 : Number(t.label.slice(5)) - 1;
+      const n = 18;
+      const codes = Array.from({ length: n }, (_, i) => `F${7700 + i + h * n}`);
+      return { label: t.label, codes: codes.filter((c) => (t.final || "").includes(c)).length, of: n, calls: t.tools.length, requests: t.usage.length };
+    }),
+    safety: r.safety || null,
+    restore: r.asked.restore || null,
     closed: r.asked.closed.correct,
     open: r.asked.open.correct,
     openTools: r.asked.open.tools,
@@ -66,6 +93,10 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     console.log(`\n${s.arm}: occupancy per turn (first → peak → last, provider)`);
     console.log(s.perTurn.map((t) => `${t.label} ${pct(t.first / 1e6)}→${pct(t.peak / 1e6)}→${pct(t.last / 1e6)} (+${k(t.growth)}, ${t.requests} req)`).join("\n"));
     if (s.reload) console.log(`reload: compaction turn-tag errors ${s.reload.tagErrors}; heavy-turn digests ${s.reload.heavyDigests}; decompress after reload ${s.reload.decompress}`);
+    for (const l of s.landings) console.log(`landing in ${l.turn} before request ${l.request}/${l.of}: ${k(l.before)} → ${k(l.after)}, re-billed ${k(l.rebilled)}, reclaimed ~${k(l.reclaimed)}, pays back after ~${Number.isFinite(l.payback) ? l.payback.toFixed(1) : "∞"} requests (${l.left} left in the turn)`);
+    if (s.heavy?.length) console.log(`in-turn answers: ${s.heavy.map((h) => `${h.label} ${h.codes}/${h.of} codes, ${h.calls} calls`).join("; ")}`);
+    if (s.safety) console.log(`safety: ${s.safety.mismatched.length} mismatched compaction events; ${s.safety.inOpenTurn.length} landings in an open turn, ${s.safety.currentTurn.length} over the open turn's own rows`);
+    if (s.restore) console.log(`restore after reload: ${s.restore.correct}/${s.restore.of} (${s.restore.tools.join(" ") || "no tools"})`);
     console.log(`missed closed ${s.missed.closed.join(",") || "-"}; open ${s.missed.open.join(",") || "-"}; open tools ${s.openTools.join(" ") || "none"}`);
   }
 }
