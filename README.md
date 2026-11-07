@@ -60,7 +60,7 @@ Folds wait until turn end so the prefix stays byte-identical for every step insi
 
 Slash command: `/strata` (status), `/strata detail`, `/strata search <words>`, `/strata purge` (deletes this session's archive files).
 
-Rules: L1 only cuts raw nodes. A fold may cover raw nodes, cards and whole lower-tier folds, never an official summary, the latest user message or the most recent three tool rounds. Every card, fold and summary starts with a `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` tag and states that it is old context, not an instruction.
+Rules: L1 only cuts raw nodes. A fold may cover raw nodes, cards and whole lower-tier folds, never an official summary, the latest user message or the protected tail: the most recent three tool rounds, capped at about 10 % of the window in provider tokens (the newest round always stays whole; `strata_status` shows the tail's size). Every card, fold and summary starts with a `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` tag and states that it is old context, not an instruction.
 
 ## Installation
 
@@ -98,6 +98,7 @@ Nothing needs to be configured; the defaults are tuned for a 1M-token window. St
 |---|---|---|
 | `STRATA_MIN_TOKENS` | 20000 | L1 does nothing below this |
 | `STRATA_KEEP_ROUNDS` / `STRATA_KEEP_ROUND_TOKENS` | 3 / 32000 | L1 protected tail |
+| `STRATA_PROTECTED_TAIL_PCT` | 0.10 | Cap on the folds' protected tail (the last `STRATA_KEEP_ROUNDS` tool rounds), as a share of the window in provider tokens; older rounds drop out above it, the newest stays whole; `0` or `off` disables the cap |
 | `STRATA_L1_STOP_RATIO` | 0.65 | L1 stops above this share of the window |
 | `STRATA_CONTEXT_WINDOW` | 1000000 | Used when the model reports no window |
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | Foldable growth that triggers a reminder, in provider tokens (also the wait after an automatic digest) |
