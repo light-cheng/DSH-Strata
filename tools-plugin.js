@@ -180,6 +180,7 @@ export function apply(ctx) {
     try {
       if (decision?.kind !== "enter" || payload.signal?.aborted) return decision;
       if (!Array.isArray(decision.messages)) return decision;
+      if (!layer.settings.nudge) return decision;
       await layer.resolveWindow(payload.agent, payload.signal);
       const text = layer.nudge(payload.agent);
       if (!text) return decision;

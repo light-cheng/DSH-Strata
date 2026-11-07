@@ -148,7 +148,8 @@ test("an automatic fold lands through the cost check, says it is a digest, and s
   const rows = autoRows(layer, session);
   assert.equal(rows.length, ids.length);
   const event = session.eventAt(rows[0].seq);
-  const text = event.data.content[0].text;
+  // Digests are per tool round now: read the first one's header, and all of them for content.
+  const text = rows.map((row) => session.eventAt(row.seq).data.content[0].text).join("\n");
   assert.match(text, /^\[strata:fold:t1 id=f\d+ range=s\d+-s\d+ auto=1\]/);
   assert.match(text, /automatic extractive digest written by Strata, not by the model/);
   assert.match(text, /Automatic digest f\d+ · T1/);
@@ -168,10 +169,10 @@ test("an automatic fold lands through the cost check, says it is a digest, and s
   const id = rows[0].id;
   const fold = JSON.parse(readFileSync(join(engine.archiveDir(session.id), `fold-${id}.json`), "utf8"));
   assert.equal(fold.auto, true);
-  const restored = layer.decompress(agent, { id, full: true });
+  const restored = rows.map((row) => layer.decompress(agent, { id: row.id, full: true })).join("\n");
   assert.match(restored, /value=7003/, "a number from a folded tool output comes back");
   assert.match(restored, /ENOENT conf\/part2\.yml not found/);
-  assert.match(layer.search(agent, { query: "value=7004" }), new RegExp(id));
+  assert.match(layer.search(agent, { query: "value=7004" }), /f\d+/);
 });
 
 test("snapshots: stale ones inside the range are dropped, never archived; live snapshot, latest user and tail untouched", async () => {
@@ -241,7 +242,8 @@ test("digest: user words without system reminders, read bodies skipped, shell er
   addAssistantText(session, "Done.");
   addUser(session, "Next task.");
   for (let i = 0; i < 3; i += 1) addToolRound(session, { command: `cat n${i}`, output: filler(`n${i}`, 400) });
-  atRatio(layer, agent, session, 0.62);
+  // High enough that every round of the first task is digested.
+  atRatio(layer, agent, session, 0.95);
   assert.ok(layer.autoFold(agent).length >= 1);
   const text = layer.state(agent).pending.map((fold) => fold.content || fold.summary || "").join("\n");
   assert.match(text, /\[user s\d+\] Audit note: the backup lives at \/srv\/backups\/heron\.tar\./);
@@ -298,7 +300,13 @@ test("high overhead (~40% of the window): target counts only the foldable part, 
   // The old rule (30% of the whole window) would have needed far more.
   const oldNeed = layout.totalTokens - 0.3 * window;
   assert.ok(need < oldNeed / 3, `new need ${need} vs old ${oldNeed}`);
-  assert.equal(ids.length, 1, "one run is enough; the old rule would have folded both");
+  // Round-sized pieces: only the oldest rounds fold, and the total stops within half a round of the target.
+  const pieces = layer.state(agent).pending;
+  assert.ok(ids.length < layout.rows.filter((row) => row.foldable && row.toolCalls > 0).length, "not every round");
+  const largest = Math.max(...pieces.map((fold) => fold.tokens));
+  // The target (58%) sits above the 50% line here, so the half-round stop yields (stopping would leave the
+  // session above the line); the overshoot is still under one round.
+  assert.ok(reclaim - need <= largest, `overshoot ${reclaim - need} within one round (${largest})`);
   const landed = await layer.flush(agent);
   assert.deepEqual(landed.landed.sort(), [...ids].sort());
   assert.ok(layer.state(agent).autoFoldedAt != null);
@@ -662,7 +670,9 @@ test("protected tail cap (user's shape: 1M, ×3.03, one round of 5 parallel ~11K
   assert.ok(day >= 10, "several turns");
   const after = layer.layout(session);
   const target = after.fixedTokens + 0.3 * (1_000_000 - after.fixedTokens);
-  assert.ok(after.totalTokens <= target * 1.05, `near the target, not ~40%: ${after.totalTokens} (target ~${Math.round(target)}, was ${before})`);
+  // One round is ~17% of the window here; the walk stops within half a round of the target (either side).
+  const round = after.rows.filter((row) => row.index >= after.rows.findLast((r) => r.toolCalls > 0).index).reduce((sum, row) => sum + row.tokens, 0) * after.scale;
+  assert.ok(Math.abs(after.totalTokens - target) <= round / 2, `within half a round of the target, not ~40%: ${after.totalTokens} (target ~${Math.round(target)}, round ~${Math.round(round)}, was ${before})`);
   // The newest round is intact: its call and all five results are raw and protected.
   const newest = after.rows.findLast((row) => row.toolCalls > 0);
   assert.equal(newest.toolCalls, 5);
