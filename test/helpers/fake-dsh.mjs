@@ -27,6 +27,18 @@ export class FakeSession {
   }
 
   append(type, data, options = {}) {
+    // DSH rejects (as a corrupt log on reload) compaction events whose turn is not the open one.
+    if (type === "compaction/start" || type === "compaction/end") {
+      let open = null;
+      for (let at = this.events.length - 1; at >= 0; at -= 1) {
+        if (this.events[at].type === "turn/start") {
+          open = this.events[at].data?.turn ?? null;
+          break;
+        }
+        if (this.events[at].type === "turn/end") break;
+      }
+      if ((data?.turn ?? null) !== open) throw new Error(`fake session: ${type} does not match the open turn (${data?.turn ?? null} vs ${open})`);
+    }
     const event = { seq: this.events.length + 1, type, data };
     this.events.push(event);
     const op = options.surfaceOp;

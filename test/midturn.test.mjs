@@ -124,6 +124,8 @@ function midTurnSession(env = {}) {
   const { session, layer, agent } = s;
   addSnapshot(s.session, "OLD_RECALL");
   for (let t = 0; t < 3; t += 1) turn(session, `old${t}`, 6, 16_000);
+  // DSH opens a turn before its user message; compaction events inside it must carry it.
+  session.append("turn/start", { turn: "turn-current" });
   addUser(session, "current: inspect the screenshots");
   const live = addSnapshot(session, "LIVE_RECALL");
   for (let i = 0; i < 8; i += 1) addToolRound(session, { name: "read_image", command: `shots/${i}.png`, output: filler(`img-${i}`, 16_000) });
@@ -147,6 +149,9 @@ test("mid-turn: only earlier turns fold; the current turn's call/result pairs an
   const foldIdx = after.rows.filter((row) => row.stratum === "fold").map((row) => row.index);
   assert.ok(foldIdx.every((index) => index < after.turnStart));
   assert.ok(after.totalTokens < before.totalTokens);
+  // The compaction events belong to the open turn (DSH rejects the log otherwise).
+  const lifecycle = session.events.filter((event) => event.type === "compaction/start" || event.type === "compaction/end");
+  assert.ok(lifecycle.length >= 2 && lifecycle.every((event) => event.data.turn === "turn-current"));
   // Bookkeeping after a mid-turn landing.
   const state = layer.state(agent);
   assert.equal(state.pending.length, 0);
@@ -195,6 +200,7 @@ test("mid-turn runs in the pressure path before L∞; L∞ runs only if the dige
       const s = setup({ STRATA_PRESET: "quality" });
       const { session, layer, agent, engine } = s;
       for (let t = 0; t < 3; t += 1) turn(session, `old${t}`, 6, 16_000);
+      session.append("turn/start", { turn: `turn-${label}` });
       addUser(session, "current");
       for (let i = 0; i < currentRounds; i += 1) addToolRound(session, { command: `pwsh ${i}`, output: filler(`c${i}`, 16_000) });
       const window = Math.round((layer.layout(session).totalTokens - (currentRounds - 8) * 4000) / 0.45);
