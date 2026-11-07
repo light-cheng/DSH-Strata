@@ -5,7 +5,7 @@
 // never loads a second copy of @deepseek-ai/dsh-tools.
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
-import { purgeArchive } from "./lib/archive.js";
+import { runCommand } from "./lib/command.js";
 import { describeTakeover, takeover } from "./lib/takeover.js";
 
 export const name = "strata-tools";
@@ -109,30 +109,14 @@ export function createStrataTools(layer) {
   ];
 }
 
-const USAGE = "Usage: /strata [status | detail | search <words> | purge]";
-
 /**
  * @param {any} layer - null when Strata did not take over.
  * @param {any} invocation
+ * @param {{ language?: string }} [options]
  */
-export function runStrataCommand(layer, invocation) {
-  const input = String(invocation?.rawInput || "").trim();
-  const [verb, ...rest] = input.split(/\s+/).filter(Boolean);
+export function runStrataCommand(layer, invocation, options = {}) {
   if (!layer) return { kind: "success", text: describeTakeover(takeover()) };
-  const agent = invocation.agent;
-  switch ((verb || "status").toLowerCase()) {
-    case "status": return { kind: "success", text: layer.status(agent) };
-    case "detail": return { kind: "success", text: layer.status(agent, { detail: true }) };
-    case "search": {
-      if (rest.length === 0) return { kind: "error", text: USAGE };
-      return { kind: "success", text: layer.search(agent, { query: rest.join(" "), limit: 10 }) };
-    }
-    case "purge": {
-      const removed = purgeArchive(layer.dir(agent));
-      return { kind: "success", text: `Deleted ${removed.files} archive files (${(removed.bytes / 1024 / 1024).toFixed(1)} MB) for this session. Folds and cards already in the conversation stay; their originals can no longer be restored from the archive (the DSH session log still has the original events).` };
-    }
-    default: return { kind: "error", text: USAGE };
-  }
+  return runCommand(layer, invocation.agent, invocation?.rawInput, options);
 }
 
 export function apply(ctx) {
@@ -146,7 +130,7 @@ export function apply(ctx) {
       definitionId: "@lightcheng/dsh-strata/strata",
       name: "strata",
       description: "Strata Context: layers, foldable ranges, cache hit rate, archive search",
-      input: { hint: "status | detail | search <words> | purge" },
+      input: { hint: "help | status | detail [full] | search <words> | purge" },
       handler: (invocation) => runStrataCommand(layer, invocation),
     }), "strata: /strata command");
   });

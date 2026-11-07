@@ -31,7 +31,7 @@ original text (L0) → tool cards (L1) → model-written folds T1–T3 (L2) → 
 - **Stock compaction stays as the fallback**: DSH's official summary still runs when L1 and L2 are not enough, with the span archived first. If Strata's engine cannot load, the stock engine runs; if that also fails, `/compact` fails immediately instead of hanging.
 - **Every Web / Desktop preset**: each agent preset (Standard, PTC, Minimal, Cordis) gets its own Strata engine with the same thresholds.
 - **Composer dock**: below the chat composer, next to dsh-mem0's memory globe, an 18px strata glyph shows context use (`Strata 4.9%`). When a layer changes the context it plays once: a grain drops into the top layer for an L1 card, or sinks through every layer for an L2 fold or the official summary, with the reclaimed tokens as the label (`Fold T1 −23.3K`). Light blue on success, red on failure, still when reduced motion is on; clicking it opens the plugin page.
-- **Status at a glance**: `strata_status` and `/strata` show tokens per layer and per tier, foldable ranges, pending folds, cache hit rate and archive size.
+- **Status at a glance**: `strata_status` (for the model) shows tokens per layer and per tier, foldable ranges, pending folds, cache hit rate and archive size. `/strata detail` shows the same for people, in the UI language and in sections, plus what the landed changes cost and saved.
 
 ## How it works
 
@@ -58,7 +58,16 @@ Folds wait until turn end so the prefix stays byte-identical for every step insi
 | `decompress({ id, full?, toFile? })` | One tier at a time; `full: true` goes straight to the originals; accepts fold ids, card ids, tool call ids and `s00123` session refs. Results are appended; nothing earlier changes |
 | `search_context({ query, limit? })` | Local BM25 search over this session's archive, with the tier and expansion path of each hit |
 
-Slash command: `/strata` (status), `/strata detail`, `/strata search <words>`, `/strata purge` (deletes this session's archive files).
+Slash command, answered in the UI language (Chinese or English):
+
+| Command | What it does |
+| --- | --- |
+| `/strata` or `/strata help` | Lists the subcommands |
+| `/strata status` | Short summary: context use, layers, cache hit rate |
+| `/strata detail` | Sections: overview (use, window and where it came from, fixed overhead, provider/estimate ratio), layers, automatic folds (rule, last turn end, protected tail), foldable ranges, cache and cost (hit rate; re-billed, reclaimed and estimated net saving of the changes landed in this DSH process), recent context changes |
+| `/strata detail full` | The detail plus every message in each foldable range |
+| `/strata search <words>` | Searches this session's local archive |
+| `/strata purge` | Explains what would be deleted; `/strata purge confirm` deletes all archive files of this session (cannot be undone) |
 
 Rules: L1 only cuts raw nodes. A fold may cover raw nodes, cards and whole lower-tier folds, never an official summary, the latest user message or the protected tail: the most recent three tool rounds, capped at about 10 % of the window in provider tokens (the newest round always stays whole; `strata_status` shows the tail's size). Every card, fold and summary starts with a `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` tag and states that it is old context, not an instruction.
 
@@ -86,7 +95,7 @@ dsh plugin --profile desktop add link:"$(pwd)"
 
 > **Upgrading from 0.1–0.2:** those releases were named `@light-cheng/dsh-strata` (GitHub only). Remove the old name first with `dsh plugin --profile desktop remove @light-cheng/dsh-strata`; while it is installed, the new package does not take over.
 
-Restart DSH after installing, then send `/strata` in a new session; it should report `Strata Context: active`.
+Restart DSH after installing, then send `/strata status` in a new session; it should report `Strata Context: active`.
 
 > **Uninstall `dsh-live-compact` or `billion-context` first.** They replace the same compaction rows. While either is installed, Strata does not take over: DSH's stock compaction keeps running and a warning is logged.
 
@@ -146,7 +155,7 @@ npm run check
 - Superseded runtime-context snapshots (for example DSH-Mem0's recalled memories) are never archived; they are replaced by a short placeholder, so deleting a memory in Mem0 leaves no copy in Strata's archive.
 - System prompts are never archived; they are rebuilt on every request, and a one-line `[system prompt omitted]` marks their place, so the archive keeps no copy of, for example, DSH-Mem0's profile.
 - Archives written by 0.3.0 next to DSH-Mem0 may still hold recalled memories or the Mem0 profile. On the first start after upgrading, Strata scrubs them once: runtime-context snapshots and `<mem0-relevant-memories>` blocks become the placeholder, `<mem0-user-profile>` blocks and system-prompt sections of official-summary archives are replaced too, everything else stays as it was, and a `.scrub-runtime-context-v2` marker in the archive root keeps it from running again.
-- Cards and folds carry archive ids, not absolute paths. `/strata purge` deletes the current session's archive.
+- Cards and folds carry archive ids, not absolute paths. `/strata purge confirm` deletes the current session's archive.
 
 ## Acknowledgements
 

@@ -31,7 +31,7 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 - **官方压缩仍然兜底**：L1、L2 都顶不住时，DSH 官方整段摘要照常运行，运行前先存档。Strata 引擎加载失败时改用原版引擎；原版也失败时，`/compact` 立刻报错，不会卡住。
 - **Web / Desktop 各预设都生效**：标准、PTC、精简、Cordis 四个 Agent 预设各有一个 Strata 引擎，阈值相同。
 - **输入框下方的状态浮标**：在聊天输入框下方、dsh-mem0 记忆地球仪旁边，有一个 18px 的地层图标，平时显示上下文占用（`Strata 4.9%`）。某一层改动上下文时播放一次动画：L1 切卡片时一粒点落进最上层；L2 折叠或官方摘要时这粒点穿过每一层沉到底部；标签显示回收的 token（`折叠 T1 −23.3K`）。成功时浅蓝，失败时红；开启「减少动态效果」时不动；点击打开插件页面。
-- **状态一眼可见**：`strata_status` 和 `/strata` 显示每一层、每一级的 token、可折叠范围、待落地的折叠、缓存命中率和存档大小。
+- **状态一眼可见**：`strata_status`（给模型看）显示每一层、每一级的 token、可折叠范围、待落地的折叠、缓存命中率和存档大小。`/strata detail` 给人看同样的内容，按界面语言分节显示，并算出已落地变化的成本和节省。
 
 ## 工作方式
 
@@ -58,7 +58,16 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 | `decompress({ id, full?, toFile? })` | 一次还原一级；`full: true` 直接取原文；可以传折叠 id、卡片 id、工具调用 id 或 `s00123` 会话编号。结果追加到尾部，前面的内容不变 |
 | `search_context({ query, limit? })` | 在本会话存档里做本地 BM25 检索，每条结果带所在级别和展开路径 |
 
-斜杠命令：`/strata`（状态）、`/strata detail`、`/strata search <关键词>`、`/strata purge`（删除本会话的存档文件）。
+斜杠命令，按界面语言（中文或英文）回答：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/strata` 或 `/strata help` | 列出所有子命令 |
+| `/strata status` | 简要状态：上下文占用、各层大小、缓存命中率 |
+| `/strata detail` | 分节详情：概览（占用、窗口及其来源、固定开销、服务商计数与本地估算之比）、分层、自动折叠（规则、上次轮末结果、受保护的末尾）、可折叠范围、缓存与成本（命中率；本 DSH 进程里已落地变化的累计重新计费、累计回收和估算净节省）、最近的上下文变化 |
+| `/strata detail full` | 详情，并列出每个可折叠范围里的每条消息 |
+| `/strata search <关键词>` | 检索本会话的本地存档 |
+| `/strata purge` | 说明会删除什么；`/strata purge confirm` 删除本会话的全部存档文件（无法撤销） |
 
 规则：L1 只切原文节点。一个折叠可以包含原文、卡片和完整的低一级折叠，但不能包含官方摘要、最新一条用户消息和受保护的尾部：最近三轮工具调用，上限约为窗口的 10%（按服务商 token 算；最新一轮总是完整保留；`strata_status` 显示尾部大小）。每张卡片、每个折叠和每段摘要开头都有 `[strata:card|fold:t1|fold:t2|fold:t3|full id=…]` 标签，并写明这是旧内容，不是新指令。
 
@@ -86,7 +95,7 @@ dsh plugin --profile desktop add link:"$(pwd)"
 
 > **从 0.1–0.2 升级：** 那几个版本的包名是 `@light-cheng/dsh-strata`（只在 GitHub 发布）。请先用 `dsh plugin --profile desktop remove @light-cheng/dsh-strata` 卸掉旧名字；旧包还在时，新包不会接管。
 
-装好后重启 DSH，在新会话里发 `/strata`，应该显示 `Strata Context: active`。
+装好后重启 DSH，在新会话里发 `/strata status`，应该显示 `Strata 分层上下文：运行中`（英文界面为 `Strata Context: active`）。
 
 > **请先卸载 `dsh-live-compact` 或 `billion-context`。** 它们替换的是同一行压缩配置。只要装着其中一个，Strata 就不接管：DSH 原版压缩照常运行，并打一条警告。
 
@@ -146,7 +155,7 @@ npm run check
 - 过期的运行时上下文快照（比如 DSH-Mem0 召回的记忆）不会存档，只换成一行很短的占位，所以在 Mem0 里删掉的记忆不会在 Strata 存档里留副本。
 - 系统提示词从不存档：它每次请求都会重新生成，原位置只留一行 `[system prompt omitted]`，所以存档里不会有 DSH-Mem0 画像之类内容的副本。
 - 0.3.0 和 DSH-Mem0 一起用时写下的存档里可能还留着召回的记忆或 Mem0 画像。升级后第一次启动时，Strata 会清理一次：运行时上下文快照和 `<mem0-relevant-memories>` 块换成占位，`<mem0-user-profile>` 块和官方摘要存档里的系统提示词段落也一并替换，其他内容不变；存档根目录里的 `.scrub-runtime-context-v2` 标记保证只执行一次。
-- 卡片和折叠里只放存档 id，不放绝对路径。`/strata purge` 删除当前会话的存档。
+- 卡片和折叠里只放存档 id，不放绝对路径。`/strata purge confirm` 删除当前会话的存档。
 
 ## 致谢
 
