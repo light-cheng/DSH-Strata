@@ -99,9 +99,28 @@ Restart DSH after installing, then send `/strata status` in a new session; it sh
 
 > **Uninstall `dsh-live-compact` or `billion-context` first.** They replace the same compaction rows. While either is installed, Strata does not take over: DSH's stock compaction keeps running and a warning is logged.
 
+## Settings
+
+DSH's plugin page for Strata Context has a **Strata settings** section (Web / Desktop). Saved changes apply at the next turn end or step, without a restart; `STRATA_*` environment variables still win over the page, and the page wins over the built-in defaults.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Mode | Cost first | **Cost first**: automatic-fold line 50 % after 2 unanswered reminders, force line 60 %, target 30 %, protected tail at most 10 % of the window, folds only at turn end. **Quality first**: 25 % / 35 % / target 15 %, tail cap 10 %, mid-turn digests on. **Custom**: shows the lines, the tail cap, mid-turn digests and current-turn folding to set yourself |
+| Automatic folds | on | Strata digests the oldest work itself when reminders go unanswered |
+| Remind the model to fold | on | `STRATA_NUDGE=off` also turns it off |
+| Archive location | `<DSH_HOME>/strata` | Applies to new sessions; open sessions keep their folder |
+| Archive size warning | 1024 MB | Above it the log and `/strata detail` warn; nothing is deleted |
+| Keep archives of ended sessions | 0 days (never delete) | Above 0, archives of sessions unused for that many days are deleted automatically |
+
+**Restore defaults** clears every value on the page. The values are stored in the profile's `cordis.patch.yml` under the `strata-gate` id, so headless and TUI profiles can set them there too (for example `mode: quality`). Internal knobs (cache price ratio, upgrade factor, minimum batch, L1 limits) stay environment-only.
+
+**Small windows.** DSH's official summary (L∞) fires at min(0.8 × window, window − maxTokens − 65536). Below about 204K that line falls under the preset lines, so Strata would never fold first. Strata then lowers the automatic-fold and force lines to 5 points below it (the target is unchanged, custom values too); `/strata detail` shows, for example, `Official summary line ~118.1K (59%); lines lowered to 54% for this window`. 1M windows are unaffected.
+
+Read-only figures live in `/strata detail`: mode and where it came from, window and its source (provider or the 1M fallback), this session's and all sessions' archive size, archive folder, and the official-summary line. `/strata purge ended` deletes the archives of ended sessions (not this one, not sessions open in this process or written by another running DSH) after a confirm step: `/strata purge ended confirm`.
+
 ## Configuration
 
-Nothing needs to be configured; the defaults are tuned for a 1M-token window. Strata's own knobs are environment variables read when DSH starts:
+Nothing needs to be configured; the defaults are tuned for a 1M-token window. Besides the settings page, every knob is an environment variable read when DSH starts; a variable wins over the page:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -113,7 +132,7 @@ Nothing needs to be configured; the defaults are tuned for a 1M-token window. St
 | `STRATA_NUDGE_GROWTH_TOKENS` | 50000 | Foldable growth that triggers a reminder, in provider tokens (also the wait after an automatic digest) |
 | `STRATA_FORCE_PCT` | 0.75 | Remind at once and land folds regardless of cost |
 | `STRATA_NUDGE_REARM_RATIO` / `STRATA_NUDGE_FORCED_REARM_RATIO` | 0.5 / 0.25 | An unanswered reminder repeats after this share of the growth step (below / above `STRATA_FORCE_PCT`) |
-| `STRATA_PRESET` | cost | `cost`: the lines below, folds only at turn end (fewer cache misses, more context carried). `quality`: automatic-fold line 25 %, force line 35 %, target 15 %, and mid-turn digests. Explicit `STRATA_*` values override the preset |
+| `STRATA_PRESET` | cost | Mode (`cost`, `quality` or `custom`; overrides the settings page). `cost`: the lines below, folds only at turn end (fewer cache misses, more context carried). `quality`: automatic-fold line 25 %, force line 35 %, target 15 %, and mid-turn digests. Explicit `STRATA_*` values override the preset |
 | `STRATA_NUDGE` | on | `off`: no fold reminders to the model; folding is left to automatic digests (the lower line then needs no unanswered reminders). `compress` stays available |
 | `STRATA_MID_TURN_FOLD` | on in `quality` | `quality` preset only: before a step, above the force line, digest the turns before the current one (the live runtime context stays); `off` keeps folds at turn end |
 | `STRATA_MID_TURN_CURRENT` | off | `quality` preset only (`on` to enable; off by default until validated live), with mid-turn digests: once the earlier turns are digested, also digest the current turn's finished tool rounds, oldest first, each round whole (the call and all its results). The protected tail, the turn's user message, the step in flight and the live runtime context stay; `off` keeps mid-turn digests to earlier turns |
@@ -128,7 +147,9 @@ Nothing needs to be configured; the defaults are tuned for a 1M-token window. St
 | `STRATA_EXPECTED_REQUESTS` | auto | Remaining requests assumed by the estimate |
 | `STRATA_MAX_DEFER_TURNS` | 3 | Turn ends a small fold may wait before it is dropped |
 | `STRATA_RESTORE_MAX_CHARS` | 24000 | Inline `decompress` limit |
-| `STRATA_SHADOW_DIR` | `<DSH_HOME>/strata` | Archive root |
+| `STRATA_SHADOW_DIR` | `<DSH_HOME>/strata` | Archive root (settings page: archive location) |
+| `STRATA_ARCHIVE_MAX_MB` | 1024 | Warn when all archives together exceed this; `0` never warns; nothing is deleted |
+| `STRATA_ARCHIVE_KEEP_DAYS` | 0 | Delete archives of ended sessions unused for this many days; `0` never deletes |
 | `STRATA_SHADOW_MAX_MB` | 128 | Archive cap; the oldest sessions are rotated out first |
 | `STRATA_IGNORE_CONFLICTS` | unset | `1` skips the takeover check (not recommended) |
 

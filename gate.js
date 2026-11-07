@@ -2,6 +2,15 @@ import { createRequire } from "node:module";
 import { configConflicts, conflictMessage, installedConflicts } from "./lib/conflicts.js";
 import { registerGuiRoutes } from "./lib/gui-routes.js";
 import { createBudget } from "./lib/budget.js";
+import { setPageConfig, readSettings } from "./lib/settings.js";
+import { archiveRootFor, archiveTotals, endedArchives, purgeSessions } from "./lib/archive.js";
+
+// The settings page's Config. Loaded apart so a schemastery failure leaves
+// the gate (and every preset's engine) working with built-in defaults.
+let PageConfig;
+try {
+  PageConfig = (await import("./lib/config.js")).Config;
+} catch {}
 
 const STOCK = "@deepseek-ai/dsh-compaction-basic";
 const OURS = "@lightcheng/dsh-strata";
@@ -88,8 +97,67 @@ function engineEntry(node) {
   return null;
 }
 
+const DAY = 24 * 60 * 60 * 1000;
+/** Archive upkeep runs at most this often per process. */
+const UPKEEP_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Archive upkeep: warn above the size cap (never deletes for it), and with
+ * archiveKeepDays > 0 (off by default) delete archives of ended sessions
+ * untouched for that many days.
+ */
+export function archiveUpkeep(settings = readSettings(), logger = undefined, now = Date.now()) {
+  const root = archiveRootFor(settings);
+  const result = { root, removed: null, totals: null, overCap: false };
+  if (settings.archiveKeepDays > 0) {
+    const rows = endedArchives(root, { olderThanMs: settings.archiveKeepDays * DAY, now });
+    if (rows.length) {
+      result.removed = purgeSessions(rows);
+      logger?.info?.(`strata: 已删除 ${result.removed.sessions} 个超过 ${settings.archiveKeepDays} 天未使用的会话存档（${(result.removed.bytes / 1048576).toFixed(1)} MB）。`);
+    }
+  }
+  result.totals = archiveTotals(root);
+  if (settings.archiveMaxMB > 0 && result.totals.bytes > settings.archiveMaxMB * 1048576) {
+    result.overCap = true;
+    logger?.warn?.(`strata: 存档共 ${(result.totals.bytes / 1048576).toFixed(1)} MB，超过设置的 ${settings.archiveMaxMB} MB（不会自动删除；可用 /strata purge ended 清理已结束会话的存档）。`);
+  }
+  return result;
+}
+
 export default class StrataGate {
-  constructor(ctx) {
+  static Config = PageConfig;
+
+  constructor(ctx, config) {
+    // Settings page values reach every Strata engine through the shared store
+    // (lib/settings.js); the engines of rewritten preset rows never see this row.
+    const publish = () => {
+      try {
+        setPageConfig(config ?? {});
+      } catch {}
+    };
+    publish();
+    let lastUpkeep = 0;
+    const upkeep = () => {
+      if (Date.now() - lastUpkeep < UPKEEP_MS) return;
+      lastUpkeep = Date.now();
+      try {
+        archiveUpkeep(readSettings(), ctx.logger);
+      } catch {}
+    };
+    const timer = setTimeout(upkeep, 30_000);
+    timer.unref?.();
+    const interval = setInterval(upkeep, UPKEEP_MS);
+    interval.unref?.();
+    ctx.on?.("loader/volatile-update", () => {
+      publish();
+      lastUpkeep = 0;
+      upkeep();
+    });
+    ctx.effect?.(() => () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      setPageConfig(null);
+    }, "strata: settings page values");
     const seen = new Set();
     let warned = false;
     ctx.on("internal/config", function (_raw, next) {

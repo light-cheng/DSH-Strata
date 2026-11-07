@@ -8,7 +8,8 @@
     "search": "Search this session's local archive",
     "searchExample": "/strata search build error",
     "purge": "Delete this session's archive files (asks for confirmation)",
-    "help": "This help"
+    "help": "This help",
+    "purgeEnded": "Delete the archives of ended sessions (asks to confirm)"
   },
   "purge": {
     "warning": "/strata purge deletes ALL local archive files of THIS session. It cannot be undone: folds and cards already in the conversation stay, but their originals can no longer be restored from the archive (the DSH session log still has the original events).",
@@ -30,7 +31,7 @@
     "used": "Context in use",
     "window": "Context window",
     "windowProvider": "reported by the provider",
-    "windowFallback": "fallback, the provider did not report one",
+    "windowFallback": "default; the provider reported none",
     "fixed": "Fixed overhead (never folded)",
     "ratio": "Provider / local estimate",
     "layers": "2. Layers (local estimates)",
@@ -49,8 +50,8 @@
     "auto": "3. Automatic folds",
     "rule": "Rule",
     "ruleOn": "at turn end above {pct} after {nudges} unanswered reminders, or above {force}; oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)",
-    "ruleMidTurn": "; quality preset: mid-turn too, earlier turns are digested before a step once context is above {force}",
-    "ruleOff": "off (STRATA_AUTO_FOLD)",
+    "ruleMidTurn": "; mid-turn above {force}, earlier turns are digested first",
+    "ruleOff": "off (settings page or STRATA_AUTO_FOLD)",
     "last": "Last turn end",
     "lastNone": "no turn end yet",
     "tail": "Protected tail",
@@ -83,6 +84,67 @@
     "changeCtx": "stale snapshots dropped",
     "changeOfficial": "official summary",
     "changeReclaimed": "−{tokens}",
-    "warning": "Warning: {text}"
+    "warning": "Warning: {text}",
+    "mode": "Mode",
+    "modeValue": "{mode} ({source})",
+    "nudge": "Fold reminders",
+    "archiveAll": "Archives, all sessions",
+    "archiveAllValue": "{mb} MB, {n} sessions{cap}",
+    "archiveCap": " (warning above {cap} MB)",
+    "archiveOver": ", above the {cap} MB warning (nothing is deleted; /strata purge ended cleans up)",
+    "archiveDir": "Archive folder",
+    "official": "Official summary line",
+    "officialValue": "~{tokens} ({pct})",
+    "officialClamped": "; lines lowered to {pct} for this window",
+    "officialUnknown": "unknown (the window cannot hold output and headroom)",
+    "ruleMidTurnCurrent": "; mid-turn above {force}, earlier turns are digested first, then this turn's finished tool rounds",
+    "warnConfig": "DSH's automatic compaction is off for {target}: {message}",
+    "warnOfficial": "DSH's official summary (L∞) failed {count} time(s) in a row: {message}",
+    "officialOff": "off (see the warning above)"
+  },
+  "purgeEnded": {
+    "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",
+    "confirm": "To delete them, send: /strata purge ended confirm",
+    "done": "Deleted the archives of {sessions} ended session(s): {files} files, {mb} MB.",
+    "none": "No archives of ended sessions to delete."
+  },
+  "mode": {
+    "cost": "Cost first",
+    "quality": "Quality first",
+    "custom": "Custom"
+  },
+  "source": {
+    "env": "env STRATA_PRESET",
+    "page": "settings page",
+    "default": "default"
+  },
+  "on": "on",
+  "off": "off",
+  "outcome": {
+    "off": "off (settings page or STRATA_AUTO_FOLD)",
+    "belowLine": "skipped ({ratio}: below {line})",
+    "belowForce": "skipped ({ratio}: below {force} and {unanswered} of {needed} unanswered nudges)",
+    "underTarget": "skipped (already under the target ~{target})",
+    "pendingCovers": "skipped (pending fold {ids} covers the target)",
+    "waitGrowth": "skipped (waiting for {step} foldable growth since the last digest; +{sofar} local so far)",
+    "unreachable": "skipped (target ~{target} unreachable: what is left is {current}fixed, protected or already folded)",
+    "unreachableCurrent": "in the current turn, ",
+    "proposed": "proposed {ids} at {ratio} (target ~{target}){stop}",
+    "proposedStop": "; stopped before {ref} (~{tokens}) to stay near the target",
+    "overshoot": "skipped (the oldest round {ref}, ~{tokens}, would overshoot the target ~{target} by more than half)",
+    "rejected": "skipped (rejected: {reason})",
+    "noRun": "skipped (no foldable run outside pending folds{current})",
+    "noRunCurrent": " before the current turn",
+    "notLandedSmall": "proposed {ids}, not landed (batch ~{batch} below the {min} minimum)",
+    "notLandedCost": "proposed {ids}, not landed (cache cost: {why})",
+    "dropped": "proposed {ids}, dropped (range changed before landing)",
+    "landed": "landed {ids}{model}{why}",
+    "landedModel": "landed model fold {ids}{why}{rest}",
+    "withModel": " with model fold {ids}",
+    "forced": " (forced)",
+    "pressured": " (above the automatic-fold line)",
+    "landedMidTurn": "landed {ids} before a step ({rest})",
+    "error": "error: {message}",
+    "sep": "; "
   }
 }

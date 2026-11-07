@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { BasicCompactionEngine } from "@deepseek-ai/dsh-compaction-basic";
 import { CompactionId, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from "@deepseek-ai/dsh-compaction";
@@ -13,7 +12,8 @@ import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
-import { recordCard } from "./lib/archive.js";
+import { archiveRootFor, recordCard } from "./lib/archive.js";
+import { readSettings } from "./lib/settings.js";
 import { scheduleScrub } from "./lib/scrub.js";
 
 const MARK = "Strata card.";
@@ -74,10 +74,16 @@ function cutOk(fn, session, seq) {
   }
 }
 
-function shadowDirectory() {
-  if (process.env.STRATA_SHADOW_DIR) return process.env.STRATA_SHADOW_DIR;
-  const root = process.env.DSH_HOME || join(homedir(), ".dsh");
-  return join(root, "strata");
+// Archive root (settings: STRATA_SHADOW_DIR > page > <DSH_HOME>/strata). A
+// session keeps the root it started with, so a changed location applies to
+// new sessions and never splits one session's archive.
+const pinnedRoots = new Map();
+
+function shadowDirectory(key) {
+  if (key === undefined) return archiveRootFor(readSettings());
+  const name = String(key);
+  if (!pinnedRoots.has(name)) pinnedRoots.set(name, archiveRootFor(readSettings()));
+  return pinnedRoots.get(name);
 }
 
 function sessionKey(agent) {
@@ -118,7 +124,7 @@ function shadowBody(messages) {
 }
 
 function freshShadowFile(kind, key) {
-  const dir = sessionDir(shadowDirectory(), key);
+  const dir = sessionDir(shadowDirectory(key), key);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   return join(dir, `${kind}-${Date.now()}-${randomBytes(4).toString("hex")}.txt`);
 }
@@ -319,11 +325,11 @@ export default class StrataEngine extends BasicCompactionEngine {
   }
 
   archiveDir(key = DEFAULT_KEY) {
-    return sessionDir(shadowDirectory(), key);
+    return sessionDir(shadowDirectory(key), key);
   }
 
   ensureArchiveDir(key = DEFAULT_KEY) {
-    const root = shadowDirectory();
+    const root = shadowDirectory(key);
     mkdirSync(root, { recursive: true, mode: 0o700 });
     tightenShadow(root);
     const dir = this.archiveDir(key);
@@ -643,7 +649,7 @@ export default class StrataEngine extends BasicCompactionEngine {
       call = indexToolCalls(session.snapshotEvents?.() || []).get(id);
     } catch {}
     try {
-      const dir = sessionDir(shadowDirectory(), key);
+      const dir = sessionDir(shadowDirectory(key), key);
       try {
         mkdirSync(dir, { recursive: true, mode: 0o700 });
         writeFileSync(join(dir, "owner"), String(process.pid), { mode: 0o600 });
@@ -748,7 +754,7 @@ export default class StrataEngine extends BasicCompactionEngine {
   }
 
   saveShadow(messages, required, shadowFile, warnKey = DEFAULT_KEY, protectPaths = []) {
-    const shadow = shadowDirectory();
+    const shadow = shadowDirectory(warnKey);
     mkdirSync(shadow, { recursive: true, mode: 0o700 });
     tightenShadow(shadow);
     const file = shadowFilePath(shadowFile, warnKey);

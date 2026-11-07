@@ -125,3 +125,30 @@ test("strataBudget trace: off by default, one JSON line per allowance call when 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("settings page client: zh / en parity, defaults match the Config, save and reset ops, validation", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { runInNewContext } = await import("node:vm");
+  const { PAGE_DEFAULTS } = await import("../lib/settings.js");
+  let mod;
+  const window = { __ModuleLoader__: { load: ({ factory }) => { mod = factory(() => ({ createElement() {}, useEffect() {}, useLayoutEffect() {}, useRef() {}, useState() {} })); } } };
+  runInNewContext(readFileSync(new URL("../client.js", import.meta.url), "utf8"), { window });
+  const { settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } = mod.__test;
+  assert.deepEqual(Object.keys(settingsZh).sort(), Object.keys(settingsEn).sort(), "same keys in zh and en");
+  assert.deepEqual({ ...DEFAULTS }, PAGE_DEFAULTS, "page defaults match lib/settings.js");
+  assert.match(settingsZh.advanced, /仅在自定义模式下生效/);
+  for (const key of ["autoFoldPctHint", "nudgeHint", "autoFoldHint", "archiveMaxMBHint", "archiveKeepDaysHint", "modeApplies"]) assert.match(settingsZh[key], /立即生效/, key);
+  assert.match(settingsZh.archiveDirHint, /对新会话生效/);
+  const initial = normalise({});
+  assert.equal(initial.mode, "cost");
+  assert.equal(normalise({ mode: "turbo" }).mode, "cost");
+  assert.deepEqual(JSON.parse(JSON.stringify(saveOps({ ...initial, mode: "quality", nudge: false }, initial))), [{ op: "set", path: ["mode"], value: "quality" }, { op: "set", path: ["nudge"], value: false }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(saveOps({ ...initial }, { ...initial, mode: "quality" }))), [{ op: "unset", path: ["mode"] }], "back to a default value unsets it");
+  assert.deepEqual(JSON.parse(JSON.stringify(saveOps({ ...initial, archiveMaxMB: "2048" }, initial))), [{ op: "set", path: ["archiveMaxMB"], value: 2048 }]);
+  assert.equal(resetOps().length, Object.keys(PAGE_DEFAULTS).length);
+  assert.equal(draftProblem(initial), "");
+  assert.equal(draftProblem({ ...initial, archiveKeepDays: "1.5" }), "invalidNumber");
+  assert.equal(draftProblem({ ...initial, mode: "custom", autoFoldPct: 60, autoFoldForcePct: 50 }), "linesOrder");
+  assert.equal(draftProblem({ ...initial, mode: "custom", autoFoldTargetPct: 55 }), "linesOrder");
+  assert.equal(draftProblem({ ...initial, mode: "cost", autoFoldPct: 60, autoFoldForcePct: 50 }), "", "advanced values only checked in custom");
+});

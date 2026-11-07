@@ -8,7 +8,8 @@
     "search": "检索本会话的本地存档",
     "searchExample": "/strata search 构建错误",
     "purge": "删除本会话的存档文件（需要确认）",
-    "help": "显示本帮助"
+    "help": "显示本帮助",
+    "purgeEnded": "清理已结束会话的归档（需要确认）"
   },
   "purge": {
     "warning": "/strata purge 会删除本会话的全部本地存档文件，且无法撤销：对话里已有的折叠和卡片不受影响，但它们的原文再也无法从存档还原（DSH 会话日志里仍有原始事件）。",
@@ -49,8 +50,8 @@
     "auto": "3. 自动折叠",
     "rule": "规则",
     "ruleOn": "轮末超过 {pct} 且连续 {nudges} 次提醒没有回应，或超过 {force} 时，从最早的内容开始折叠，直到约 {target}（固定开销 + 剩余空间的 {targetPct}）",
-    "ruleMidTurn": "；质量优先模式下，一轮中途超过 {force} 时也会先摘要之前几轮",
-    "ruleOff": "已关闭（STRATA_AUTO_FOLD）",
+    "ruleMidTurn": "；一轮中途超过 {force} 时也会先摘要之前几轮",
+    "ruleOff": "已关闭（设置页或 STRATA_AUTO_FOLD）",
     "last": "上次轮末",
     "lastNone": "还没有轮末",
     "tail": "受保护的末尾",
@@ -83,6 +84,67 @@
     "changeCtx": "清掉过期快照",
     "changeOfficial": "官方摘要",
     "changeReclaimed": "−{tokens}",
-    "warning": "警告：{text}"
+    "warning": "警告：{text}",
+    "mode": "模式",
+    "modeValue": "{mode}（{source}）",
+    "nudge": "提醒模型折叠",
+    "archiveAll": "全部会话的存档",
+    "archiveAllValue": "{mb} MB，{n} 个会话{cap}",
+    "archiveCap": "（提醒上限 {cap} MB）",
+    "archiveOver": "，已超过提醒上限 {cap} MB（不会自动删除；可用 /strata purge ended 清理）",
+    "archiveDir": "存档位置",
+    "official": "官方摘要触发线",
+    "officialValue": "约 {tokens}（{pct}）",
+    "officialClamped": "；已按窗口下调到 {pct}",
+    "officialUnknown": "未知（窗口不足以容纳输出和余量）",
+    "ruleMidTurnCurrent": "；一轮中途超过 {force} 时也会先摘要之前几轮，再摘要本轮已完成的工具轮次",
+    "warnConfig": "DSH 的自动压缩对 {target} 已关闭：{message}",
+    "warnOfficial": "DSH 官方摘要（L∞）已连续失败 {count} 次：{message}",
+    "officialOff": "已关闭（见上方警告）"
+  },
+  "purgeEnded": {
+    "warning": "/strata purge ended 会删除已结束会话的本地存档：{sessions} 个会话，{mb} MB（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），且无法撤销。之后再打开这些会话，它们的折叠和卡片原文无法从存档还原（DSH 会话日志里仍有原始事件）。",
+    "confirm": "确定要删除，请发送：/strata purge ended confirm",
+    "done": "已删除 {sessions} 个已结束会话的存档：{files} 个文件，{mb} MB。",
+    "none": "没有可清理的已结束会话存档。"
+  },
+  "mode": {
+    "cost": "成本优先",
+    "quality": "质量优先",
+    "custom": "自定义"
+  },
+  "source": {
+    "env": "环境变量 STRATA_PRESET",
+    "page": "设置页",
+    "default": "默认"
+  },
+  "on": "开",
+  "off": "关",
+  "outcome": {
+    "off": "已关闭（设置页或 STRATA_AUTO_FOLD）",
+    "belowLine": "跳过（{ratio}，低于 {line}）",
+    "belowForce": "跳过（{ratio}，低于 {force}，提醒没有回应 {unanswered}/{needed} 次）",
+    "underTarget": "跳过（已低于目标 约 {target}）",
+    "pendingCovers": "跳过（待落地的折叠 {ids} 已够达到目标）",
+    "waitGrowth": "跳过（等可折叠内容再增长 {step}；上次摘要后本地已增长 +{sofar}）",
+    "unreachable": "跳过（目标 约 {target} 达不到：剩下的都是{current}固定开销、受保护的末尾或已折叠的内容）",
+    "unreachableCurrent": "当前轮、",
+    "proposed": "已提议 {ids}，此时 {ratio}（目标 约 {target}）{stop}",
+    "proposedStop": "；在 {ref}（约 {tokens}）之前停下，以免低于目标太多",
+    "overshoot": "跳过（最早的一轮 {ref} 约 {tokens}，折掉会比目标 约 {target} 低出一半以上）",
+    "rejected": "跳过（被拒绝：{reason}）",
+    "noRun": "跳过（待落地折叠之外没有可折叠的内容{current}）",
+    "noRunCurrent": "，当前轮之前也没有",
+    "notLandedSmall": "已提议 {ids}，未落地（这批约 {batch}，低于最小 {min}）",
+    "notLandedCost": "已提议 {ids}，未落地（缓存成本不划算：{why}）",
+    "dropped": "已提议 {ids}，已丢弃（落地前范围变了）",
+    "landed": "已落地 {ids}{model}{why}",
+    "landedModel": "已落地模型折叠 {ids}{why}{rest}",
+    "withModel": "，连同模型折叠 {ids}",
+    "forced": "（强制）",
+    "pressured": "（超过自动折叠线）",
+    "landedMidTurn": "一步之前已落地 {ids}（{rest}）",
+    "error": "出错：{message}",
+    "sep": "；"
   }
 }
