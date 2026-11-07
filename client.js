@@ -21,6 +21,10 @@ window.__ModuleLoader__.load({
     /** How long the event label and the success colour stay after an animation. */
     const SHOW_MS = 8000
     const ERROR_MS = 10 * 60 * 1000
+    /** A poll that has not answered by then counts as failed (it is retried on the next tick). */
+    const POLL_TIMEOUT_MS = 8000
+    /** Consecutive failed polls before the dock says the status is unavailable (one miss is noise). */
+    const UNAVAILABLE_AFTER = 2
 
     const en = {
       idle: 'Strata',
@@ -32,6 +36,11 @@ window.__ModuleLoader__.load({
       official: 'Summary',
       stale: 'Stale context',
       error: 'Compaction failed',
+      errorCard: 'Card failed',
+      errorFold: 'Fold failed',
+      unavailable: 'Status unavailable',
+      unavailableTitle: 'Strata could not read its status from DSH just now (not a compaction failure). See /strata detail.',
+      errorTitle: 'A card or fold did not land. /strata detail shows what failed.',
       open: 'Open Strata Context',
     }
     const zh = {
@@ -44,6 +53,11 @@ window.__ModuleLoader__.load({
       official: '官方摘要',
       stale: '清理旧上下文',
       error: '压缩失败',
+      errorCard: '切卡片失败',
+      errorFold: '折叠失败',
+      unavailable: '状态暂不可用',
+      unavailableTitle: 'Strata 暂时读不到 DSH 的状态（这不是压缩失败）。详情见 /strata detail。',
+      errorTitle: '有一次卡片或折叠没有落地。/strata detail 里有失败原因。',
       open: '打开 Strata Context',
     }
 
@@ -128,7 +142,7 @@ window.__ModuleLoader__.load({
       const classes = ['strata-glyph']
       if (state === 'success') classes.push('is-success')
       if (state === 'error') classes.push('is-error')
-      if (state === 'off') classes.push('is-off')
+      if (state === 'off' || state === 'unavailable') classes.push('is-off')
       return h(
         'svg',
         { className: classes.join(' '), viewBox: '0 0 32 32', width: 18, height: 18, 'aria-hidden': 'true' },
@@ -161,9 +175,15 @@ window.__ModuleLoader__.load({
 
     async function fetchStatus(sessionId, lang) {
       const url = new URL(`${STATUS_PATH}?session=${encodeURIComponent(sessionId)}${lang ? `&lang=${encodeURIComponent(lang)}` : ''}`, document.baseURI)
-      const response = await fetch(url.toString(), { credentials: 'same-origin', headers: { accept: 'application/json' } })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      return response.json()
+      const controller = typeof AbortController === 'function' ? new AbortController() : null
+      const timer = controller ? setTimeout(() => controller.abort(), POLL_TIMEOUT_MS) : null
+      try {
+        const response = await fetch(url.toString(), { credentials: 'same-origin', headers: { accept: 'application/json' }, signal: controller?.signal })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return await response.json()
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
     }
 
     /** The active UI language id, sent with each poll so /strata answers in it. */
@@ -205,9 +225,41 @@ window.__ModuleLoader__.load({
       return `${t('official')}${saved}`
     }
 
+    /**
+     * What the dock shows. Red only for a stored compaction failure (a card or
+     * fold that did not land); a status poll that keeps failing is a neutral
+     * "status unavailable", since nothing is known about compaction then.
+     */
+    function dockState(t, { data, misses, play, now }) {
+      let state = 'idle'
+      let label = t('waiting')
+      let title = t('open')
+      // Error age by the server's clock (the status carries `now`).
+      const serverNow = data?.now ?? now
+      const usage = data?.usage
+      if (usage && usage.window > 0) label = `${t('idle')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%`
+      if (data && data.takeover && data.takeover !== 'active' && data.takeover !== 'unknown') {
+        state = 'off'
+        label = t('notActive')
+      } else if (data?.error && serverNow - data.error.at < ERROR_MS) {
+        state = 'error'
+        label = t(data.error.layer === 'L2' ? 'errorFold' : data.error.layer === 'L1' ? 'errorCard' : 'error')
+        title = t('errorTitle')
+      } else if (misses >= UNAVAILABLE_AFTER) {
+        state = 'unavailable'
+        label = t('unavailable')
+        title = t('unavailableTitle')
+      } else if (play?.event && now < play.until) {
+        state = 'success'
+        label = eventLabel(t, play.event)
+      }
+      return { state, label, title }
+    }
+
     function StrataDock({ ctx, t, sessionId }) {
       const [data, setData] = useState(null)
-      const [failed, setFailed] = useState(false)
+      // Consecutive failed polls. A failed poll is not a failed compaction.
+      const [misses, setMisses] = useState(0)
       const [play, setPlay] = useState({ key: 0, mode: 'idle', event: null, until: 0 })
       const seen = useRef(null)
       const [, setTick] = useState(0)
@@ -216,12 +268,16 @@ window.__ModuleLoader__.load({
         seen.current = null
         if (!sessionId) return
         let live = true
+        let inFlight = false
         const load = async () => {
+          // One poll at a time: a slow DSH (long turn, busy host) must not pile requests up.
+          if (inFlight) return
+          inFlight = true
           try {
             const next = await fetchStatus(sessionId, activeLanguage(ctx))
             if (!live) return
             setData(next)
-            setFailed(false)
+            setMisses(0)
             // The first poll only records where we are; old events do not replay.
             if (seen.current === null) {
               seen.current = next.events?.[next.events.length - 1]?.at ?? 0
@@ -239,7 +295,9 @@ window.__ModuleLoader__.load({
               }))
             }
           } catch {
-            if (live) setFailed(true)
+            if (live) setMisses((count) => count + 1)
+          } finally {
+            inFlight = false
           }
         }
         void load()
@@ -253,21 +311,7 @@ window.__ModuleLoader__.load({
         }
       }, [sessionId])
 
-      let state = 'idle'
-      let label = t('waiting')
-      const now = Date.now()
-      const usage = data?.usage
-      if (usage && usage.window > 0) label = `${t('idle')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%`
-      if (data && data.takeover && data.takeover !== 'active' && data.takeover !== 'unknown') {
-        state = 'off'
-        label = t('notActive')
-      } else if (failed || (data?.error && now - data.error.at < ERROR_MS)) {
-        state = 'error'
-        label = t('error')
-      } else if (play.event && now < play.until) {
-        state = 'success'
-        label = eventLabel(t, play.event)
-      }
+      const { state, label, title } = dockState(t, { data, misses, play, now: Date.now() })
 
       const open = () => {
         try {
@@ -279,7 +323,7 @@ window.__ModuleLoader__.load({
 
       return h(
         'button',
-        { type: 'button', className: 'strata-dock', title: t('open'), onClick: open },
+        { type: 'button', className: 'strata-dock', title, onClick: open, 'data-state': state },
         h(StrataGlyph, { state, mode: play.mode, playKey: play.key }),
         h('span', { className: 'strata-dock-text' }, label),
       )
@@ -681,6 +725,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
+    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, dockState, en, zh, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
   },
 })
