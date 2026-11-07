@@ -100,7 +100,11 @@
     "ruleMidTurnCurrent": "; mid-turn above {force}, earlier turns are digested first, then this turn's finished tool rounds",
     "warnConfig": "DSH's automatic compaction is off for {target}: {message}",
     "warnOfficial": "DSH's official summary (L∞) failed {count} time(s) in a row: {message}",
-    "officialOff": "off (see the warning above)"
+    "officialOff": "off (see the warning above)",
+    "midTurn": "Mid-turn digests",
+    "midTurnValue": "{landed} landed{current}; last: {last}",
+    "midTurnCurrent": " ({count} in the current turn)",
+    "midTurnNone": "none yet"
   },
   "purgeEnded": {
     "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",
@@ -145,6 +149,8 @@
     "pressured": " (above the automatic-fold line)",
     "landedMidTurn": "landed {ids} before a step ({rest})",
     "error": "error: {message}",
-    "sep": "; "
+    "sep": "; ",
+    "midTurnAt": "at {ratio}, target ~{target}{stop}",
+    "inCurrent": "; {ids} in the current turn"
   }
 }
