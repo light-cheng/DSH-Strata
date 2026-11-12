@@ -94,12 +94,14 @@ test("clamp: 200K lowers the force line below DSH's summary line; target unchang
   assert.equal(officialLine(route(200_000)), 118_080);
   const cost = foldLines(readSettings({}, {}), route(200_000));
   assert.equal(Math.round(cost.officialPct * 100), 59);
-  assert.equal(cost.autoFoldPct, 0.5, "50% is already below 54%");
   assert.ok(Math.abs(cost.autoFoldForcePct - (118_080 / 200_000 - 0.05)) < 1e-9);
   assert.equal(Math.round(cost.autoFoldForcePct * 100), 54);
+  // 50% sits 4 points under the lowered force line (< MIN_STAGE_GAP): the nudge stage is dropped.
+  assert.equal(cost.autoFoldPct, cost.autoFoldForcePct);
+  assert.equal(cost.nudgeStage, false);
   assert.equal(cost.clamped, true);
   const quality = foldLines(readSettings({}, { mode: "quality" }), route(200_000));
-  assert.deepEqual([quality.autoFoldPct, quality.autoFoldForcePct, quality.clamped], [0.25, 0.35, false]);
+  assert.deepEqual([quality.autoFoldPct, quality.autoFoldForcePct, quality.clamped, quality.nudgeStage], [0.25, 0.35, false, true]);
 });
 
 test("clamp: 128K lowers both cost lines; custom is clamped too", () => {
@@ -116,7 +118,33 @@ test("clamp: 128K lowers both cost lines; custom is clamped too", () => {
   assert.ok(Math.abs(quality.autoFoldForcePct - limit) < 1e-9);
 });
 
-test("clamp: 1M windows are unaffected", () => {
+test("clamp: DeepSeek V4 1M (maxTokens 384K) summarizes at ~550.5K; cost lines merge at 50%, quality untouched", () => {
+  const v4 = route(1_000_000, 384_000);
+  assert.equal(officialLine(v4), 550_464);
+  const cost = foldLines(readSettings({}, {}), v4);
+  assert.ok(Math.abs(cost.autoFoldForcePct - (0.550464 - 0.05)) < 1e-9);
+  assert.equal(Math.round(cost.autoFoldForcePct * 100), 50);
+  assert.equal(cost.autoFoldPct, cost.autoFoldForcePct, "no 50% / 50% two-stage rule");
+  assert.deepEqual([cost.clamped, cost.nudgeStage], [true, false]);
+  const quality = foldLines(readSettings({}, { mode: "quality" }), v4);
+  assert.deepEqual([quality.autoFoldPct, quality.autoFoldForcePct, quality.clamped, quality.nudgeStage], [0.25, 0.35, false, true]);
+  // A lowered force line that still leaves >= 5 points keeps the nudge stage.
+  const wide = foldLines(readSettings({}, {}), route(1_000_000, 300_000));
+  assert.equal(wide.autoFoldPct, 0.5);
+  assert.equal(wide.nudgeStage, true);
+  assert.ok(wide.autoFoldForcePct > 0.55 && wide.autoFoldForcePct < 0.6);
+});
+
+test("clamp: custom lines at or above the force line collapse to one; a close custom pair stays two-stage when not lowered", () => {
+  const same = foldLines(readSettings({}, { mode: "custom", autoFoldPct: 60, autoFoldForcePct: 60 }), route(1_000_000));
+  assert.deepEqual([same.autoFoldPct, same.autoFoldForcePct, same.nudgeStage, same.clamped], [0.6, 0.6, false, false]);
+  const inverted = foldLines(readSettings({}, { mode: "custom", autoFoldPct: 70, autoFoldForcePct: 60 }), route(1_000_000));
+  assert.deepEqual([inverted.autoFoldPct, inverted.nudgeStage], [0.6, false]);
+  const close = foldLines(readSettings({}, { mode: "custom", autoFoldPct: 57, autoFoldForcePct: 60 }), route(1_000_000));
+  assert.deepEqual([close.autoFoldPct, close.nudgeStage], [0.57, true]);
+});
+
+test("clamp: 1M windows with a small output reservation are unaffected", () => {
   for (const settings of [readSettings({}, {}), readSettings({}, { mode: "quality" })]) {
     const lines = foldLines(settings, route(1_000_000));
     assert.equal(lines.official, 800_000);

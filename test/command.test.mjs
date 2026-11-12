@@ -187,7 +187,9 @@ test("detail: small window shows DSH's summary line and the lowered line; mode, 
   state.maxTokens = 16_384;
   const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
   assert.match(zh, /官方摘要触发线[\s　]+约 118\.1K（59%）；已按窗口下调到 54(\.\d)?%/);
-  assert.match(zh, /轮末超过 50% 且连续 2 次提醒没有回应，或超过 54(\.\d)?% 时/);
+  assert.match(zh, /轮末超过 54(\.\d)?% 时，从最早的内容开始折叠/);
+  assert.doesNotMatch(zh, /提醒没有回应，或超过/);
+  assert.match(zh, /已按窗口下调到 54(\.\d)?%；两条线合并为一条，不再等提醒/);
   assert.match(zh, /模式[\s　]+成本优先（默认）/);
   assert.match(zh, /提醒模型折叠[\s　]+开/);
   assert.match(zh, /全部会话的存档[\s　]+\d+\.\d MB，\d+ 个会话/);
@@ -197,6 +199,16 @@ test("detail: small window shows DSH's summary line and the lowered line; mode, 
   state.window = 1_000_000;
   const big = runCommand(layer, agent, "detail", { language: "zh" }).text;
   assert.match(big, /官方摘要触发线[\s　]+约 800\.0K（80%）$/m);
+  assert.match(big, /轮末超过 50% 且连续 2 次提醒没有回应，或超过 60% 时/);
+  // DeepSeek V4: 1M window, 384K output reservation (the user's Windows report).
+  state.maxTokens = 384_000;
+  const v4 = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(v4, /官方摘要触发线[\s　]+约 550\.5K（55%）；已按窗口下调到 50(\.\d)?%；两条线合并为一条，不再等提醒$/m);
+  assert.match(v4, /轮末超过 50(\.\d)?% 时，从最早的内容开始折叠/);
+  assert.doesNotMatch(v4, /超过 50(\.\d)?% 且连续/);
+  const v4en = runCommand(layer, agent, "detail", { language: "en" }).text;
+  assert.match(v4en, /at turn end above 50(\.\d)?%; oldest work first/);
+  assert.doesNotMatch(v4en, /unanswered reminders, or above/);
 });
 
 test("purge ended: warns first, deletes only ended sessions' archives on confirm", async () => {
