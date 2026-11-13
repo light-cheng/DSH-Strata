@@ -190,5 +190,13 @@
     "sep": "; ",
     "midTurnAt": "at {ratio}, target ~{target}{stop}",
     "inCurrent": "; {ids} in the current turn"
+  },
+  "marker": {
+    "line": "Strata tidied what the model sees: {parts}; {records} records, about {tokens} tokens. The conversation here is unchanged; the originals stay in the local archive and can be restored.",
+    "fold": "folded {count} earlier stretch(es){ids}",
+    "ids": " ({ids})",
+    "card": "turned {count} older tool output(s) into a card",
+    "dropped": "dropped {count} superseded runtime-context snapshot(s)",
+    "join": "; "
   }
 }

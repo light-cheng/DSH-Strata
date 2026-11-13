@@ -190,5 +190,13 @@
     "sep": "；",
     "midTurnAt": "此时 {ratio}，目标 约 {target}{stop}",
     "inCurrent": "；{ids} 在本轮"
+  },
+  "marker": {
+    "line": "Strata 整理了模型看到的上下文：{parts}，共 {records} 条记录，约 {tokens} tokens。这里的对话记录没有变，原文在本地存档里，需要时可以取回。",
+    "fold": "折叠了 {count} 段较早的内容{ids}",
+    "ids": "（{ids}）",
+    "card": "把 {count} 段旧工具输出压成了卡片",
+    "dropped": "清理了 {count} 份过期的运行时上下文",
+    "join": "，"
   }
 }

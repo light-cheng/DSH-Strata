@@ -147,7 +147,7 @@ test("a pending fold whose nodes changed is dropped, not landed", async () => {
   const run = layer.snapshot(agent).runs[0];
   layer.propose(agent, `${run.startRef}–${run.endRef} build\nsummary`);
   // Simulate another replacement touching the range (e.g. an official summary).
-  session.append("user/message", { role: "user", content: [{ type: "text", text: "x" }], source: { kind: "compact-checkpoint" } }, { surfaceOp: { op: "replace", startSeq: run.start, endSeq: run.end } });
+  session.append("user/message", { role: "user", content: [{ type: "text", text: "x" }], source: { kind: "other-replacement" } }, { surfaceOp: { op: "replace", startSeq: run.start, endSeq: run.end } });
   const result = await layer.flush(agent);
   assert.deepEqual(result.dropped, ["f1"]);
 });
