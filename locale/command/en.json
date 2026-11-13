@@ -129,7 +129,20 @@
     "breakEvenNever": "never at this rate",
     "projected": "Projected net saving",
     "projectedValue": "~{tokens} tokens once the expected requests have run (the cost checks' estimate)",
-    "netEarly": "; negative right after a landing is expected: the re-billing is paid at once, the saving comes per request"
+    "netEarly": "; negative right after a landing is expected: the re-billing is paid at once, the saving comes per request",
+    "version": "Version",
+    "versionValue": "{version}{commit}  ·  code {code}",
+    "versionCommit": "  ·  commit {commit} ({source})",
+    "versionSource": {
+      "git": "local checkout",
+      "github": "GitHub install",
+      "npm": "npm release",
+      "": "source unknown"
+    },
+    "versionNoCommit": "  ·  no commit ({source})",
+    "lastRejection": "Last rejection",
+    "lastRejectionNone": "none in this process",
+    "lastRejectionValue": "{time}  {what}: {message}  (a check refused it; not a failure, the dock stays as it is)"
   },
   "purgeEnded": {
     "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",

@@ -9,6 +9,8 @@ import { addAssistantText, addToolRound, addUser, fakeAgent, fakeContext, FakeSe
 
 const root = mkdtempSync(join(tmpdir(), "strata-auto-"));
 process.env.STRATA_SHADOW_DIR = join(root, "archive");
+// Toy-sized fixtures: the per-landing floor (2K provider tokens by default) is lowered like the minimum batch.
+process.env.STRATA_MIN_LANDING_TOKENS = "50";
 process.env.STRATA_MIN_BENEFIT_TOKENS = "500";
 process.env.STRATA_MIN_BENEFIT_RATIO = "0.000001";
 process.env.STRATA_EXPECTED_REQUESTS = "200";
@@ -574,6 +576,8 @@ test("forced at 75% with a pending model fold: one batch with digests; above 60%
     layer.settings.minBenefitTokens = 1_000_000;
     assert.match(layer.propose(agent, `${run.startRef}–${small.ref} early\nearly work.`), ratio >= 0.75 ? /accepted/ : /deferred/);
     if (ratio < 0.75) assert.deepEqual((await layer.flush(agent)).landed, [], "alone below the line it is deferred (cost check)");
+    // At the line the batch skips the cost check but still needs the minimum batch (the digests bring it).
+    layer.settings.minBenefitTokens = 500;
     const model = layer.state(agent).pending[0].id;
     const ids = layer.autoFold(agent);
     assert.ok(ids.length >= 1, `${ratio}: digests join the pending model fold`);
@@ -622,6 +626,8 @@ test("user's timeline: model T1 f1 pending (deferred) early, 3 turns × ~56K loc
   for (let t = 0; t < 3 && !first; t += 1) {
     turn();
     const before = layer.layout(session);
+    // Below the line the huge minimum keeps f1 deferred; at the line the batch skips the cost check, not a realistic minimum.
+    layer.settings.minBenefitTokens = before.totalTokens / 1_000_000 < 0.6 ? 10_000_000 : 10_000;
     const landed = await layer.turnEnd(agent);
     if (before.totalTokens / 1_000_000 < 0.6) {
       assert.deepEqual(landed, [], "below 60%: still deferred");

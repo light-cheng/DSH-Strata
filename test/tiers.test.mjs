@@ -8,6 +8,8 @@ import { addAssistantText, addToolRound, addUser, fakeAgent, fakeContext, FakeSe
 
 const root = mkdtempSync(join(tmpdir(), "strata-tiers-"));
 process.env.STRATA_SHADOW_DIR = join(root, "archive");
+// Toy-sized fixtures: the per-landing floor (2K provider tokens by default) is lowered like the minimum batch.
+process.env.STRATA_MIN_LANDING_TOKENS = "50";
 process.env.STRATA_MIN_BENEFIT_TOKENS = "200";
 process.env.STRATA_MIN_BENEFIT_RATIO = "0.000001";
 process.env.STRATA_EXPECTED_REQUESTS = "200";

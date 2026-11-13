@@ -11,7 +11,8 @@ import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
-import { isCancellation, markBusy, recordActivityError, recordUsage } from "./lib/activity.js";
+import { isCancellation, markBusy, recordActivityError, recordActivityRejection, recordUsage } from "./lib/activity.js";
+import { estimateFold, isRejection, kTokens, landingGate, StrataRejection } from "./lib/economics.js";
 import { archiveRootFor, recordCard } from "./lib/archive.js";
 import { readSettings } from "./lib/settings.js";
 import { scheduleScrub } from "./lib/scrub.js";
@@ -445,6 +446,30 @@ export default class StrataEngine extends BasicCompactionEngine {
         }
         const tailBeyondKept = chunk.after - (chunk.keptTokens || 0);
         if (tailBeyondKept > MAX_TAIL && measurement.totalTokens < URGENT_TOKENS) return;
+        // Minimum-gain gate (as for folds): a card re-bills everything after its
+        // start, the kept rounds included, so a small reclaim never pays back.
+        if (layer.settings.landingGate) {
+          const framed = this.cardFramedTokens(chunk.card);
+          const gate = typeof framed === "number" && framed >= chunk.tokens
+            ? { ok: false, reason: `the card (~${kTokens(framed)} tokens) is not smaller than the span (~${kTokens(chunk.tokens)} tokens)` }
+            : (() => {
+              const remainingRequests = layer.remainingRequests(agent.session);
+              const estimate = estimateFold({
+                tokensFromStart: chunk.tokens + chunk.after,
+                reclaimed: chunk.tokens - (typeof framed === "number" ? framed : 0),
+                remainingRequests,
+                priceMiss: layer.settings.priceMiss,
+                priceHit: layer.settings.priceHit,
+              });
+              const forced = measurement.totalTokens >= window * layer.foldLines(agent).autoFoldForcePct;
+              return landingGate({ estimate, scale: beforeLayout.scale || 1, minTokens: layer.settings.minLandingTokens, remainingRequests, maxPayback: layer.settings.maxPaybackRequests, forced });
+            })();
+          if (!gate.ok) {
+            this.ctx.logger?.info?.(`strata cut rejected: ${gate.reason}`);
+            recordActivityRejection(sessionId, "L1", gate.reason, { id: chunk.card?.archiveId || "" });
+            return;
+          }
+        }
         const before = measurement.totalTokens;
         const started = Date.now();
         let reduced = false;
@@ -466,8 +491,11 @@ export default class StrataEngine extends BasicCompactionEngine {
           if (reduced) layer.recordChange(agent, { layer: "L1", id: chunk.card?.archiveId || "", start: chunk.start, tokensFromStart: chunk.tokens + chunk.after, reclaimed: before - after });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          this.ctx.logger?.warn?.(`strata cut failed: ${message}`);
-          if (!isCancellation(error, op)) recordActivityError(sessionId, "L1", message, { id: chunk.card?.archiveId || "", timeout: op.reason?.name === "TimeoutError" });
+          if (isRejection(error)) {
+            this.ctx.logger?.info?.(`strata cut rejected: ${message}`);
+            recordActivityRejection(sessionId, "L1", message, { id: chunk.card?.archiveId || "" });
+          } else this.ctx.logger?.warn?.(`strata cut failed: ${message}`);
+          if (!isRejection(error) && !isCancellation(error, op)) recordActivityError(sessionId, "L1", message, { id: chunk.card?.archiveId || "", timeout: op.reason?.name === "TimeoutError" });
         }
         if (!reduced) {
           this.ctx.logger?.warn?.(`strata cut did not reduce ${before}; leaving the prefix for the gate`);
@@ -509,13 +537,32 @@ export default class StrataEngine extends BasicCompactionEngine {
     });
   }
 
+  /** Estimated tokens of a card's checkpoint message (frame included), before anything is written; undefined without a meter estimate. */
+  cardFramedTokens(card) {
+    if (!card?.text) return undefined;
+    try {
+      const message = createUserMessage({
+        content: [
+          { type: "text", text: `${stratumTag("card", { id: card.archiveId || "" })}\n${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
+          { type: "text", text: card.text },
+          { type: "text", text: SUMMARY_CLOSE_TAG },
+        ],
+        source: compactCheckpointSource(CompactionId(randomUUID())),
+      });
+      const tokens = this.ctx.tokenMeter.estimateMessage?.(message);
+      return typeof tokens === "number" ? tokens : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async commitSelectedSpan(agent, chunk, signal) {
     signal?.throwIfAborted();
     const session = agent.session;
     const nodes = session.surface.nodes;
     const startIdx = nodes.indexOf(chunk.start);
     const endIdx = nodes.indexOf(chunk.end);
-    if (startIdx < 0 || endIdx < startIdx) throw new Error("strata: selected span is not on the surface");
+    if (startIdx < 0 || endIdx < startIdx) throw new StrataRejection("the selected span is no longer on the surface");
     if (chunk.card?.ok !== true || !chunk.card.text) throw new Error("strata: approved card missing; leaving the span");
     const shadowedSeqs = nodes.slice(startIdx, endIdx + 1);
     const messages = [];
@@ -540,7 +587,7 @@ export default class StrataEngine extends BasicCompactionEngine {
     });
     const framedTokens = this.ctx.tokenMeter.estimateMessage?.(checkpointMessage);
     if (typeof framedTokens === "number" && framedTokens >= chunk.tokens) {
-      throw new Error(`summary is not smaller than the shadowed content (${framedTokens} >= ${chunk.tokens})`);
+      throw new StrataRejection(`summary is not smaller than the shadowed content (${framedTokens} >= ${chunk.tokens})`);
     }
     const lifecycle = { compactionId, turn: null };
     let started = false;
