@@ -10,6 +10,7 @@ import { rotateShadow, sessionDir, shadowFileBody, shadowMaxBytes } from "./shad
 import { buildSendLess, decideThunder } from "./thunder.js";
 import { l1MayCut, stratumOf, stratumTag } from "./lib/stratum.js";
 import { DROPPED_CONTEXT_TEXT, StrataLayer } from "./lib/l2.js";
+import { inBatch } from "./lib/marker.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { isCancellation, markBusy, recordActivityError, recordActivityRejection, recordUsage } from "./lib/activity.js";
 import { estimateFold, isRejection, kTokens, landingGate, StrataRejection } from "./lib/economics.js";
@@ -576,53 +577,41 @@ export default class StrataEngine extends BasicCompactionEngine {
       });
     }
     const summarized = await this.summarize({ messages, strataCut: { card: chunk.card } }, agent, signal);
-    const compactionId = CompactionId(randomUUID());
-    const checkpointMessage = createUserMessage({
-      content: [
-        { type: "text", text: `${stratumTag("card", { id: chunk.card.archiveId || "" })}\n${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
-        ...summarized.summary,
-        { type: "text", text: SUMMARY_CLOSE_TAG },
-      ],
-      source: compactCheckpointSource(compactionId),
-    });
-    const framedTokens = this.ctx.tokenMeter.estimateMessage?.(checkpointMessage);
-    if (typeof framedTokens === "number" && framedTokens >= chunk.tokens) {
-      throw new StrataRejection(`summary is not smaller than the shadowed content (${framedTokens} >= ${chunk.tokens})`);
-    }
-    const lifecycle = { compactionId, turn: null };
-    let started = false;
-    let replaced = false;
-    let ended = false;
-    try {
-      const startEvent = session.append("compaction/start", lifecycle);
-      started = true;
-      const summaryEvent = session.append("compaction/summary", {
-        compactionId,
-        summary: summarized.summary,
-        ...summarized.rawOutput === undefined ? {} : { rawOutput: summarized.rawOutput },
-        shadowedRange: { start: chunk.start, end: chunk.end },
-        shadowedSeqs: [...shadowedSeqs],
-        shadowedTokenCount: chunk.tokens,
-        provider: summarized.provider,
-        model: summarized.model,
+    const planned = { start: chunk.start, end: chunk.end, seqs: shadowedSeqs, tokens: chunk.tokens, kind: "card" };
+    await inBatch(session, [planned], async (batch) => {
+      const checkpointMessage = createUserMessage({
+        content: [
+          { type: "text", text: `${stratumTag("card", { id: chunk.card.archiveId || "" })}\n${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
+          ...summarized.summary,
+          { type: "text", text: SUMMARY_CLOSE_TAG },
+        ],
+        source: compactCheckpointSource(batch.compactionId),
       });
-      session.append("user/message", checkpointMessage, {
-        surfaceOp: { op: "replace", startSeq: chunk.start, endSeq: chunk.end },
-        sourceEventSeqs: [startEvent.seq, summaryEvent.seq, ...shadowedSeqs],
-      });
-      replaced = true;
-      session.append("compaction/end", lifecycle);
-      ended = true;
-      await this.ctx.sessions.flush(session);
-    } catch (error) {
-      if (started && !ended) {
-        const message = error instanceof Error ? error.message : String(error);
-        try {
-          session.append("compaction/end", replaced ? lifecycle : { ...lifecycle, error: message });
-        } catch {}
+      const framedTokens = this.ctx.tokenMeter.estimateMessage?.(checkpointMessage);
+      if (typeof framedTokens === "number" && framedTokens >= chunk.tokens) {
+        throw new StrataRejection(`summary is not smaller than the shadowed content (${framedTokens} >= ${chunk.tokens})`);
       }
-      if (!replaced) throw error;
-    }
+      try {
+        batch.replace({
+          start: chunk.start,
+          end: chunk.end,
+          seqs: shadowedSeqs,
+          tokens: chunk.tokens,
+          message: checkpointMessage,
+          kind: "card",
+          // What the model got (the card); people see the short line in `summary` (lib/marker.js).
+          rawOutput: summarized.rawOutput ?? summarized.summary,
+          provider: summarized.provider,
+          model: summarized.model,
+        });
+      } catch (error) {
+        batch.fail(error);
+        throw error;
+      }
+      try {
+        await this.ctx.sessions.flush(session);
+      } catch {}
+    }, { flush: () => this.ctx.sessions?.flush?.(session) });
   }
 
   rememberPrefix(agent) {

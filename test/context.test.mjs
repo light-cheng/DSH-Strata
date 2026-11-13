@@ -97,6 +97,14 @@ test("sweep: stale snapshots drop when the prefix already broke (free) and when 
     const after = fresh.layout(session);
     assert.equal(after.rows.filter((row) => row.stale).length, 0);
     assert.equal(after.rows.filter((row) => row.stratum === "dropped").length, 3);
+    // One conversation row for the sweep, not one per snapshot (lib/marker.js).
+    const ids = new Set(session.events.filter((event) => event.type === "compaction/start").map((event) => event.data.compactionId));
+    assert.equal(ids.size, 1);
+    const summaries = session.events.filter((event) => event.type === "compaction/summary");
+    assert.equal(summaries.length, 1, "DSH allows one summary per compaction");
+    assert.equal(session.events.filter((event) => event.type === "compaction/prune").length, 3, "each drop keeps its exact shadow price");
+    assert.match(summaries[0].data.summary[0].text, /3/);
+    assert.doesNotMatch(summaries[0].data.summary[0].text, /<strata|Superseded runtime context/);
     assert.equal(after.rows.filter((row) => row.live).length, 1, "live snapshot stays");
     assert.equal(readActivity(session.id).events.at(-1).layer, "ctx", "the dock hears about it");
   } finally {

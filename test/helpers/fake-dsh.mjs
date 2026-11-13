@@ -24,6 +24,7 @@ export class FakeSession {
     this.surface = { nodes: [], replaceGeneration: 0 };
     this.route = { provider, model };
     this.listeners = [];
+    this.compaction = null;
   }
 
   append(type, data, options = {}) {
@@ -38,6 +39,31 @@ export class FakeSession {
         if (this.events[at].type === "turn/end") break;
       }
       if ((data?.turn ?? null) !== open) throw new Error(`fake session: ${type} does not match the open turn (${data?.turn ?? null} vs ${open})`);
+    }
+    // DSH's log check (dsh-session-format-v3-to-v4 compact/span): one open
+    // compaction, exactly one summary each, summaries and prunes name an exact
+    // current surface span, checkpoints land inside their compaction.
+    if (type === "compaction/summary" || type === "compaction/prune") {
+      const { start, end } = data.shadowedRange;
+      const from = this.surface.nodes.indexOf(start);
+      const to = this.surface.nodes.indexOf(end);
+      const span = from < 0 || to < from ? null : this.surface.nodes.slice(from, to + 1);
+      if (!span || JSON.stringify(span) !== JSON.stringify(data.shadowedSeqs)) throw new Error(`fake session: ${type} shadowedSeqs do not name an exact current surface span`);
+    }
+    if (type === "compaction/start") {
+      if (this.compaction) throw new Error("fake session: compaction/start overlaps an open compaction");
+      this.compaction = { id: data.compactionId, summarized: false };
+    } else if (type === "compaction/summary" || type === "compaction/end") {
+      if (!this.compaction || this.compaction.id !== data.compactionId) throw new Error(`fake session: ${type} has no matching compaction/start`);
+      if (type === "compaction/summary") {
+        if (this.compaction.summarized) throw new Error("fake session: compaction/summary repeats");
+        this.compaction.summarized = true;
+      } else {
+        if (data.error === undefined && !this.compaction.summarized) throw new Error("fake session: successful compaction/end requires one summary");
+        this.compaction = null;
+      }
+    } else if (type === "user/message" && options.surfaceOp?.op === "replace" && data?.source?.kind === "compact-checkpoint") {
+      if (!this.compaction || this.compaction.id !== data.source.compactionId) throw new Error("fake session: compaction checkpoint has no matching compaction/start");
     }
     const event = { seq: this.events.length + 1, type, data };
     this.events.push(event);
