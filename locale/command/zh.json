@@ -129,7 +129,20 @@
     "breakEvenNever": "按目前速度不会转正",
     "projected": "预计最终净节省",
     "projectedValue": "约 {tokens} tokens（预计的请求都发出之后；按成本检查的估计）",
-    "netEarly": "；刚落地时为负是正常的：重新计费一次付清，节省按请求逐次累积"
+    "netEarly": "；刚落地时为负是正常的：重新计费一次付清，节省按请求逐次累积",
+    "version": "版本",
+    "versionValue": "{version}{commit}  ·  代码 {code}",
+    "versionCommit": "  ·  提交 {commit}（{source}）",
+    "versionSource": {
+      "git": "本地检出",
+      "github": "GitHub 安装",
+      "npm": "npm 发布版",
+      "": "来源不明"
+    },
+    "versionNoCommit": "  ·  无提交号（{source}）",
+    "lastRejection": "上次拒收",
+    "lastRejectionNone": "本进程内没有",
+    "lastRejectionValue": "{time}  {what}：{message}（校验没通过，不算失败，图标不变色）"
   },
   "purgeEnded": {
     "warning": "/strata purge ended 会删除已结束会话的本地存档：{sessions} 个会话，{mb} MB（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），且无法撤销。之后再打开这些会话，它们的折叠和卡片原文无法从存档还原（DSH 会话日志里仍有原始事件）。",
