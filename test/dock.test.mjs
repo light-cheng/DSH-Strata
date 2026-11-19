@@ -52,7 +52,7 @@ test("status route: per-session JSON, session id validated, fence respected, GET
   assert.equal(call(route, `${GUI_STATUS_PATH}?session=session-x`, "POST").statusCode, 405);
   const [fenced] = routeHarness({ rejection: 403 });
   assert.equal(call(fenced, `${GUI_STATUS_PATH}?session=session-x`).statusCode, 403);
-  assert.deepEqual(Object.keys(statusPayload("session-x", "1")).sort(), ["busy", "error", "events", "now", "takeover", "usage", "version"]);
+  assert.deepEqual(Object.keys(statusPayload("session-x", "1")).sort(), ["busy", "error", "events", "now", "plain", "takeover", "usage", "version"]);
 });
 
 test("strataBudget: stages follow the L1 stop line and the force line; summaries keep their budget when tight", async () => {
