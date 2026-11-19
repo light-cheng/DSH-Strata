@@ -137,6 +137,8 @@ test("first-run note: offered until acknowledged; one marker per profile under <
   assert.equal(profileName({ DSH_PROFILE: "x" }, []), "x");
   assert.equal(profileName({ DSH_PROFILE_DIR: "/h/profiles/desk" }, []), "desk");
   assert.equal(profileName({}, []), "default");
+  assert.equal(profileName({ DSH_PROFILE: "x" }, ["--profile", "web"], { name: "desktop", dir: "/h/profiles/desktop" }), "desktop", "DSH's profileContext wins");
+  assert.equal(profileName({}, [], { dir: "/h/profiles/desk/" }), "desk");
   assert.equal(introPending({ profile: "web" }), true);
   assert.equal(introPending({ profile: "web" }), true, "offering writes nothing");
   assert.equal(existsSync(dir), false);
@@ -209,6 +211,26 @@ test("status payload and ack route: the note is offered after a turn end with St
   assert.equal(statusPayload(id, "1", { language: "en" }).intro, undefined, "not when Strata is not in charge");
   setTakeover("active");
   assert.deepEqual(warnings, []);
+});
+
+test("intro ack: the profile comes from DSH's profileContext, not the environment", () => {
+  resetIntroMemory();
+  rmSync(stateDir(), { recursive: true, force: true });
+  const routes = [];
+  const child = {
+    webServer: { register(route) { routes.push(route); return () => {}; } },
+    get(name) { return name === "profileContext" ? { name: "desk-x", dir: "/h/profiles/desk-x" } : undefined; },
+    effect(fn) { fn(); },
+  };
+  registerGuiRoutes({ inject(_names, fn) { fn(child); } }, "1");
+  const ack = routes.find((route) => route.path === GUI_INTRO_ACK_PATH);
+  const res = { headers: {}, statusCode: 0, body: "", setHeader(k, v) { this.headers[k] = v; }, end(b = "") { this.body = b; } };
+  ack.handler({ url: GUI_INTRO_ACK_PATH, method: "POST", headers: {}, resume() {} }, res);
+  assert.equal(res.statusCode, 200);
+  assert.ok(existsSync(introMarker("desk-x")), "marker named after profileContext.name");
+  assert.deepEqual(readdirSync(stateDir()), ["intro-desk-x"]);
+  rmSync(stateDir(), { recursive: true, force: true });
+  resetIntroMemory();
 });
 
 test("nudges off: the rule says the turn end does not wait for reminders, and the engine does not wait either", async () => {
