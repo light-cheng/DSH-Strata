@@ -217,7 +217,17 @@
     "estimateAfter": "pays back after {n} requests",
     "estimateNever": "never pays back",
     "largerRange": "; pick a larger range or leave it",
-    "shorterSummary": "; pick a larger range or write a shorter summary"
+    "shorterSummary": "; pick a larger range or write a shorter summary",
+    "protected": "{ref} is protected ({why}); the range must end before it",
+    "whyLastUser": "the latest user message",
+    "whySystem": "the system prompt",
+    "whyTail": "the most recent tool rounds",
+    "overlapsPending": "the range overlaps pending fold {id}",
+    "officialSummary": "the range contains an official summary, which is never folded again",
+    "maxTier": "the range contains a T{top} fold; T{max} is the highest tier",
+    "splitsCall": "{ref} would split a tool call from its result",
+    "leavesCall": "{ref} would leave a tool call without its result",
+    "notOnSurface": "{ref} is no longer in the context"
   },
   "plain": {
     "lineSaved": "Strata · ~{tokens} saved this session (tidied {count}×)",
@@ -228,8 +238,8 @@
     "lastNone": "Last: nothing tidied yet.",
     "last": "Last: {time} {what}, freeing ~{tokens}",
     "lastNoTokens": "Last: {time} {what}",
-    "whatAuto": "folded {n} older part(s) into summaries automatically",
-    "whatModel": "the model folded {n} older part(s) into summaries",
+    "whatAuto": "folded older work into summaries automatically",
+    "whatModel": "the model folded older work into summaries",
     "whatCard": "turned an older tool output into a card",
     "whatCtx": "cleared outdated runtime context",
     "whatOfficial": "DSH wrote an official summary",
@@ -243,10 +253,13 @@
     "rejection": "{time} a {what} was skipped: {reason} (a check stopped it; not a failure)",
     "rejectionCard": "card",
     "rejectionFold": "fold",
-    "error": "{time} {what} failed: {message} (see /strata detail)",
+    "error": "{time} {what} failed (see /strata detail for why)",
     "intro": "Strata is working: mode {mode}. Change it in Plugins → Strata Context → Strata settings.",
     "introClose": "Got it",
     "lineIdleRestart": "Strata · context {pct}, nothing tidied since start",
-    "lastNoneRestart": "Last: nothing tidied since DSH started; the conversation already has {folds} fold(s) and {cards} card(s)."
+    "lastNoneRestart": "Last: nothing tidied since DSH started; the conversation already has {folds} fold(s) and {cards} card(s).",
+    "nextWaitNudge": "Next: past {pct}; after {left} more unanswered reminder(s), or at {force}, it tidies up at turn end",
+    "nextWaitGrowth": "Next: just tidied; once about {step} more can be folded, or at {forced}, it tidies up at turn end",
+    "errorTimeout": "{time} {what} timed out (see /strata detail)"
   }
 }

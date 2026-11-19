@@ -15,6 +15,7 @@ window.__ModuleLoader__.load({
     const NS = 'dsh-strata.dock'
     const PKG = '@lightcheng/dsh-strata'
     const STATUS_PATH = 'dsh-strata/gui/status'
+    const INTRO_ACK_PATH = 'dsh-strata/gui/intro-ack'
     const POLL_MS = 2000
     /** An event older than this when first seen is shown as text only, without animation. */
     const FRESH_MS = 15000
@@ -186,6 +187,21 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Tell the server the first-run note was shown, so it is recorded; true when it was. */
+    async function ackIntro() {
+      try {
+        const response = await fetch(new URL(INTRO_ACK_PATH, document.baseURI).toString(), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: '{}',
+        })
+        return response.ok
+      } catch {
+        return false
+      }
+    }
+
     /** The active UI language id, sent with each poll so /strata answers in it. */
     function activeLanguage(ctx) {
       try {
@@ -271,6 +287,9 @@ window.__ModuleLoader__.load({
       const [play, setPlay] = useState({ key: 0, mode: 'idle', event: null, until: 0 })
       // The first-run note (sent once per profile by the server); stays until closed.
       const [intro, setIntro] = useState(null)
+      // Shown once per mounted dock; acknowledged once it is on screen (retried on later polls if that failed).
+      const introShown = useRef(false)
+      const introAcked = useRef(false)
       const seen = useRef(null)
       const [, setTick] = useState(0)
 
@@ -288,7 +307,12 @@ window.__ModuleLoader__.load({
             if (!live) return
             setData(next)
             setMisses(0)
-            if (next?.intro?.text) setIntro(next.intro)
+            if (next?.intro?.text && !introShown.current) {
+              introShown.current = true
+              setIntro(next.intro)
+            } else if (next?.intro?.text && introShown.current && !introAcked.current) {
+              introAcked.current = await ackIntro()
+            }
             // The first poll only records where we are; old events do not replay.
             if (seen.current === null) {
               seen.current = next.events?.[next.events.length - 1]?.at ?? 0
@@ -321,6 +345,18 @@ window.__ModuleLoader__.load({
           clearInterval(timer)
         }
       }, [sessionId])
+
+      // Acknowledge only after the note rendered (two-phase: the server records it on this POST).
+      useEffect(() => {
+        if (!intro || introAcked.current) return
+        let live = true
+        void ackIntro().then((ok) => {
+          if (live) introAcked.current = ok
+        })
+        return () => {
+          live = false
+        }
+      }, [intro])
 
       const { state, label, title, hover } = dockState(t, { data, misses, play, now: Date.now() })
 

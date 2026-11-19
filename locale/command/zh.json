@@ -217,7 +217,17 @@
     "estimateAfter": "{n} 次请求后回本",
     "estimateNever": "回不了本",
     "largerRange": "；可以选更大的范围，或者不折",
-    "shorterSummary": "；可以选更大的范围，或写短一点的摘要"
+    "shorterSummary": "；可以选更大的范围，或写短一点的摘要",
+    "protected": "{ref} 受保护（{why}），范围要在它之前结束",
+    "whyLastUser": "最新的用户消息",
+    "whySystem": "系统提示",
+    "whyTail": "最近几轮工具调用",
+    "overlapsPending": "范围和待落地的折叠 {id} 重叠",
+    "officialSummary": "范围里有官方摘要，官方摘要不会再折叠",
+    "maxTier": "范围里有 T{top} 折叠，T{max} 已经是最高一级",
+    "splitsCall": "{ref} 会把工具调用和它的结果拆开",
+    "leavesCall": "{ref} 会留下没有结果的工具调用",
+    "notOnSurface": "{ref} 已经不在当前上下文里"
   },
   "plain": {
     "lineSaved": "Strata · 本会话已省约 {tokens}（{count} 次整理）",
@@ -228,8 +238,8 @@
     "lastNone": "最近：还没有整理过。",
     "last": "最近：{time} {what}，腾出约 {tokens}",
     "lastNoTokens": "最近：{time} {what}",
-    "whatAuto": "自动把 {n} 段较早的内容折成了摘要",
-    "whatModel": "模型把 {n} 段较早的内容折成了摘要",
+    "whatAuto": "自动把较早的内容折成了摘要",
+    "whatModel": "模型把较早的内容折成了摘要",
     "whatCard": "把一段较早的工具输出压成了卡片",
     "whatCtx": "清掉了过期的运行环境信息",
     "whatOfficial": "DSH 做了一次官方摘要",
@@ -243,10 +253,13 @@
     "rejection": "{time} 有一次{what}没做：{reason}（校验拦下的，不算失败）",
     "rejectionCard": "切卡片",
     "rejectionFold": "折叠",
-    "error": "{time} {what}失败：{message}（/strata detail 里有详情）",
+    "error": "{time} {what}失败（原因见 /strata detail）",
     "intro": "Strata 已在工作：当前是{mode}。可以在 插件 → Strata 分层上下文 → Strata 设置 里调整。",
     "introClose": "知道了",
     "lineIdleRestart": "Strata · 上下文 {pct}，本次启动后还没整理",
-    "lastNoneRestart": "最近：本次启动后还没有整理；对话里已有 {folds} 个折叠、{cards} 张卡片。"
+    "lastNoneRestart": "最近：本次启动后还没有整理；对话里已有 {folds} 个折叠、{cards} 张卡片。",
+    "nextWaitNudge": "下次：已过 {pct}，再有 {left} 次提醒没回应，或涨到 {force}，就在轮末整理",
+    "nextWaitGrowth": "下次：刚整理过，等可折叠的内容再多约 {step}，或涨到 {forced}，再在轮末整理",
+    "errorTimeout": "{time} {what}超时没完成（原因见 /strata detail）"
   }
 }
