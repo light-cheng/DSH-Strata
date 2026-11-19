@@ -540,6 +540,12 @@ export default class StrataEngine extends BasicCompactionEngine {
       // lines follow a settings change before the next turn end.
       requests: snap.usage.length,
       route: layer.routeOf(agent),
+      // What the next turn end's automatic fold waits for (l2.js autoFold).
+      unanswered: snap.unanswered,
+      foldable: snap.foldable,
+      scale: snap.scale,
+      autoFoldedAt: snap.autoFoldedAt,
+      autoExhausted: layer.state(agent).autoExhausted === true,
     });
   }
 

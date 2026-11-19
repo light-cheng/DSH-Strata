@@ -18,8 +18,10 @@ const { recordActivity, recordActivityError, recordActivityRejection, recordUsag
 const { recordLedger, resetLedger } = await import("../lib/ledger.js");
 const { readSettings } = await import("../lib/settings.js");
 const { plainPct, plainStatus } = await import("../lib/plain.js");
-const { profileName, readState, resetIntroMemory, stateFile, takeIntro } = await import("../lib/state.js");
-const { statusPayload } = await import("../lib/gui-routes.js");
+const { ackIntro, introMarker, introPending, profileName, resetIntroMemory, stateDir } = await import("../lib/state.js");
+const { statSync, readdirSync } = await import("node:fs");
+const { GUI_INTRO_ACK_PATH, registerGuiRoutes, statusPayload } = await import("../lib/gui-routes.js");
+const { listSessionArchives } = await import("../lib/archive.js");
 const { landingGate, estimateFold } = await import("../lib/economics.js");
 const { setTakeover } = await import("../lib/takeover.js");
 
@@ -69,7 +71,7 @@ test("plain line: waiting, idle, early (net below zero), saved; numbers are the 
   recordLedger(id, { layer: "L2", id: "f3,f2,f1", tokensFromStart: 52_500, reclaimed: 38_500, remainingRequests: 4 }, 3);
   const early = plainStatus(id, zh, { settings });
   assert.equal(early.line, "Strata · 已整理 1 次，约 4 次请求后开始省");
-  assert.match(early.hover[0], /^最近：\d\d:\d\d 自动把 3 段较早的内容折成了摘要，腾出约 38\.5K$/);
+  assert.match(early.hover[0], /^最近：\d\d:\d\d 自动把较早的内容折成了摘要，腾出约 38\.5K$/);
   assert.equal(early.hover[3], "累计腾出约 38.5K；「已省」按缓存价格折算，扣掉了重新计费（细节见 /strata detail）");
   assert.equal(plainStatus(id, en, { settings }).line, "Strata · tidied 1×, saving starts in ~4 requests");
   // 40 requests later the saving is well past the re-billing.
@@ -78,7 +80,7 @@ test("plain line: waiting, idle, early (net below zero), saved; numbers are the 
   // net = 38.5K × 40 × 0.1 − 14K × 0.9 = 154K − 12.6K
   assert.equal(saved.line, "Strata · 本会话已省约 141.4K（1 次整理）");
   assert.equal(plainStatus(id, en, { settings }).line, "Strata · ~141.4K saved this session (tidied 1×)");
-  assert.equal(plainPct(0.184), "18%");
+  assert.equal(plainPct(0.184), "18.4%", "same one-decimal rounding as /strata detail");
   // After a restart the ledger is empty but the conversation still holds folds.
   recordUsage("plain-restart", { totalTokens: 38_300, window: 1_000_000, requests: 1, tiers: [1, 1, 0], cards: 0 });
   const restarted = plainStatus("plain-restart", zh, { settings });
@@ -96,71 +98,117 @@ test("plain hover: rejection after the last landing, failure first; next line fo
   const rejected = plainStatus(id, zh, { settings: cost });
   assert.match(rejected.hover.at(-1), /^\d\d:\d\d 有一次切卡片没做：回收太少：只有约 1\.2K，低于每次至少 2\.0K 的下限（校验拦下的，不算失败）$/);
   assert.match(plainStatus(id, en, { settings: cost }).hover.at(-1), /a card was skipped: too little to reclaim/);
-  recordActivityError(id, "L2", "boom", { id: "f1" });
-  assert.match(plainStatus(id, zh, { settings: cost }).hover.at(-1), /^\d\d:\d\d 折叠失败：boom/);
+  recordActivityError(id, "L2", "Error: ENOSPC write failed", { id: "f1" });
+  const failed = plainStatus(id, zh, { settings: cost }).hover.at(-1);
+  assert.match(failed, /^\d\d:\d\d 折叠失败（原因见 \/strata detail）$/);
+  assert.doesNotMatch(failed, /ENOSPC/, "no raw English error in the hover");
+  recordActivityError(id, "L1", "timeout", { timeout: true });
+  assert.match(plainStatus(id, zh, { settings: cost }).hover.at(-1), /^\d\d:\d\d 切卡片超时没完成/);
 
-  const next = (settings, total = 300_000) => {
-    recordUsage(id, { totalTokens: total, window: 1_000_000, requests: 5, route: { maxTokens: 16_000 } });
+  const next = (settings, total = 300_000, extra = {}) => {
+    recordUsage(id, { totalTokens: total, window: 1_000_000, requests: 5, route: { maxTokens: 16_000 }, ...extra });
     return plainStatus(id, zh, { settings }).hover[2];
   };
+  // Cost mode at 55%: past the 50% line but reminders are on and none went unanswered yet.
+  assert.equal(next(cost, 550_000), "下次：已过 50%，再有 2 次提醒没回应，或涨到 60%，就在轮末整理");
+  assert.equal(next(cost, 550_000, { unanswered: 1 }), "下次：已过 50%，再有 1 次提醒没回应，或涨到 60%，就在轮末整理");
+  assert.equal(next(cost, 550_000, { unanswered: 2 }), "下次：已过整理线 50%，这一轮结束时会按需整理");
+  assert.equal(next(cost, 620_000), "下次：已过整理线 50%，这一轮结束时会按需整理", "above the force line no reminders are needed");
+  // After a digest that folded all it could, the next waits for 50K more foldable work (or 75%).
+  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 120_000, scale: 1 }), "下次：刚整理过，等可折叠的内容再多约 50.0K，或涨到 75%，再在轮末整理");
+  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 160_000, scale: 1 }), "下次：已过整理线 50%，这一轮结束时会按需整理");
+  assert.match(plainStatus(id, en, { settings: cost }).hover[2], /^Next: past the 50% line/);
+  assert.equal(next(cost, 550_000, { unanswered: 0 }).length > 0, true);
   assert.equal(next(readSettings({}, { nudge: false })), "下次：涨到约 50% 时，会在这一轮结束时整理");
   assert.equal(next(readSettings({}, { autoFold: false })), "下次：自动整理已关，只靠模型自己折叠和 DSH 官方摘要");
-  assert.equal(next(readSettings({}, { mode: "quality" })), "下次：已过整理线 25%，这一轮结束时会按需整理；一轮中途超过 35% 也会先整理");
+  assert.equal(next(readSettings({}, { mode: "quality" })), "下次：已过 25%，再有 2 次提醒没回应，或涨到 35%，就在轮末整理；一轮中途超过 35% 也会先整理");
+  assert.equal(next(readSettings({}, { mode: "quality", nudge: false })), "下次：已过整理线 25%，这一轮结束时会按需整理；一轮中途超过 35% 也会先整理");
   // DeepSeek V4 (384K output reservation): both lines lowered to 50%, one line, no nudge stage.
   recordUsage(id, { totalTokens: 100_000, window: 1_000_000, requests: 5, route: { maxTokens: 384_000 } });
   assert.equal(plainStatus(id, zh, { settings: cost }).hover[2], "下次：涨到约 50% 时，会在这一轮结束时整理");
 });
 
-test("first-run note: once per profile, kept in <DSH_HOME>/strata/state.json, survives a restart, delete the file to reset", () => {
+test("first-run note: offered until acknowledged; one marker per profile under <DSH_HOME>/strata/.state, 0700, ignored by the archive list", () => {
   resetIntroMemory();
-  const file = stateFile();
-  assert.equal(file, join(root, "home", "strata", "state.json"));
+  const dir = stateDir();
+  assert.equal(dir, join(root, "home", "strata", ".state"));
   assert.equal(profileName({}, ["node", "dsh", "--profile", "web"]), "web");
   assert.equal(profileName({}, ["node", "dsh", "--profile=desktop"]), "desktop");
   assert.equal(profileName({ DSH_PROFILE: "x" }, []), "x");
-  assert.equal(takeIntro({ profile: "web" }), true);
-  assert.equal(takeIntro({ profile: "web" }), false, "same process");
+  assert.equal(profileName({ DSH_PROFILE_DIR: "/h/profiles/desk" }, []), "desk");
+  assert.equal(profileName({}, []), "default");
+  assert.equal(introPending({ profile: "web" }), true);
+  assert.equal(introPending({ profile: "web" }), true, "offering writes nothing");
+  assert.equal(existsSync(dir), false);
+  assert.deepEqual(ackIntro({ profile: "web" }), { ok: true });
+  assert.equal(introPending({ profile: "web" }), false, "same process");
   resetIntroMemory();
-  assert.equal(takeIntro({ profile: "web" }), false, "after a restart");
-  assert.equal(takeIntro({ profile: "desktop" }), true, "another profile gets its own");
-  assert.ok(readState().intro.web && readState().intro.desktop);
-  assert.doesNotMatch(readFileSync(file, "utf8"), /cordis/);
-  rmSync(file);
+  assert.equal(introPending({ profile: "web" }), false, "after a restart");
+  assert.equal(introPending({ profile: "desktop" }), true, "another profile gets its own");
+  assert.deepEqual(ackIntro({ profile: "web" }), { ok: true }, "a second ack (another tab) is fine");
+  if (process.platform !== "win32") assert.equal(statSync(dir).mode & 0o777, 0o700);
+  assert.match(introMarker("a:b*?", dir), /intro-a%3Ab%2A%3F$/, "safe file names on Windows");
+  assert.deepEqual(readdirSync(dir), ["intro-web"], "one marker, no temp files");
+  assert.deepEqual(listSessionArchives(join(root, "home", "strata")), [], "not taken for a session archive");
+  rmSync(introMarker("web", dir));
   resetIntroMemory();
-  assert.equal(takeIntro({ profile: "web" }), true, "deleting the file resets it");
-  // A broken file is treated as empty, not as an error.
-  writeFileSync(file, "{not json");
+  assert.equal(introPending({ profile: "web" }), true, "deleting the marker resets it");
+  // Unwritable: reported, and not offered again in this process.
   resetIntroMemory();
-  assert.equal(takeIntro({ profile: "web" }), true);
+  const blocked = join(root, "blocked");
+  writeFileSync(blocked, "a file where the folder should be");
+  assert.equal(ackIntro({ profile: "web", dir: blocked }).ok, false);
+  assert.equal(introPending({ profile: "web", dir: blocked }), false);
 });
 
-test("status payload: plain text in the dock's language; the note only after a turn end with Strata in charge, once", () => {
+test("status payload and ack route: the note is offered after a turn end with Strata in charge, recorded only on the dock's POST", () => {
   resetActivity();
   resetLedger();
   resetIntroMemory();
-  rmSync(stateFile(), { force: true });
+  rmSync(stateDir(), { recursive: true, force: true });
   setTakeover("active");
   const id = "plain-c";
   const first = statusPayload(id, "1", { language: "zh" });
   assert.equal(first.plain.line, "Strata 待命");
   assert.equal(first.intro, undefined, "no turn end yet");
-  assert.equal(existsSync(stateFile()), false);
   recordUsage(id, { totalTokens: 20_000, window: 1_000_000, requests: 1 });
   const shown = statusPayload(id, "1", { language: "zh" });
   assert.equal(shown.intro.text, "Strata 已在工作：当前是成本优先。可以在 插件 → Strata 分层上下文 → Strata 设置 里调整。");
   assert.equal(shown.intro.close, "知道了");
-  assert.equal(statusPayload(id, "1", { language: "zh" }).intro, undefined, "only once");
+  assert.ok(statusPayload(id, "1", { language: "zh" }).intro, "still offered: a dropped response or an unmounted dock does not lose it");
+  assert.equal(existsSync(stateDir()), false, "nothing written before the ack");
+  assert.match(statusPayload(id, "1", { language: "en" }).intro.text, /^Strata is working: mode Cost first\. Change it in Plugins → Strata Context → Strata settings\.$/);
+
+  const routes = [];
+  const warnings = [];
+  const child = {
+    webServer: { register(route) { routes.push(route); return () => {}; } },
+    get(name) { return name === "connection" ? { requestRejection: (req) => (req.headers?.bad ? 403 : undefined) } : undefined; },
+    effect(fn) { fn(); },
+    logger: { warn: (text) => warnings.push(text) },
+  };
+  registerGuiRoutes({ inject(_names, fn) { fn(child); } }, "1");
+  const ack = routes.find((route) => route.path === GUI_INTRO_ACK_PATH);
+  const call = (method, headers = {}) => {
+    const res = { headers: {}, statusCode: 0, body: "", setHeader(k, v) { this.headers[k] = v; }, end(b = "") { this.body = b; } };
+    ack.handler({ url: GUI_INTRO_ACK_PATH, method, headers, resume() {} }, res);
+    return res;
+  };
+  assert.equal(call("GET").statusCode, 405);
+  assert.equal(call("POST", { bad: 1 }).statusCode, 403, "behind the same request fence");
+  assert.equal(existsSync(stateDir()), false);
+  const ok = call("POST");
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual(JSON.parse(ok.body), { ok: true });
+  assert.equal(statusPayload(id, "1", { language: "zh" }).intro, undefined, "acknowledged");
   resetIntroMemory();
   assert.equal(statusPayload("plain-d", "1", { language: "en" }).intro, undefined, "not again after a restart or in a new session");
+  rmSync(stateDir(), { recursive: true, force: true });
   resetIntroMemory();
-  rmSync(stateFile());
-  recordUsage("plain-e", { totalTokens: 1, window: 1_000_000 });
-  assert.match(statusPayload("plain-e", "1", { language: "en" }).intro.text, /^Strata is working: mode Cost first\. Change it in Plugins → Strata Context → Strata settings\.$/);
-  resetIntroMemory();
-  rmSync(stateFile());
   setTakeover("stock", "test");
-  assert.equal(statusPayload("plain-e", "1", { language: "en" }).intro, undefined, "not when Strata is not in charge");
+  assert.equal(statusPayload(id, "1", { language: "en" }).intro, undefined, "not when Strata is not in charge");
   setTakeover("active");
+  assert.deepEqual(warnings, []);
 });
 
 test("nudges off: the rule says the turn end does not wait for reminders, and the engine does not wait either", async () => {
@@ -185,11 +233,19 @@ test("nudges off: the rule says the turn end does not wait for reminders, and th
   assert.equal(layer.state(agent).unanswered || 0, 0);
   const ids = layer.autoFold(agent);
   assert.ok(ids.length > 0, layer.state(agent).lastAutoFold?.outcome);
-  // With nudges on, the same state waits for them.
+  // With nudges on, the same state waits for them, and the dock's hover says so (same conditions).
   layer.state(agent).pending = [];
   layer.settings = { ...base, nudge: true, autoFoldPct: 0.005, autoFoldForcePct: 0.9, autoFoldTargetPct: 0.002 };
+  const hoverNext = async () => {
+    await engine.publishUsage(agent);
+    return plainStatus(session.id, zh, { settings: layer.settings }).hover[2];
+  };
+  assert.match(await hoverNext(), /^下次：已过 0\.5%，再有 2 次提醒没回应，或涨到 75%，就在轮末整理$/);
   assert.deepEqual(layer.autoFold(agent), []);
   assert.match(layer.state(agent).lastAutoFold.outcome, /0 of 2 unanswered nudges/);
+  layer.state(agent).unanswered = 2;
+  assert.match(await hoverNext(), /^下次：已过整理线 0\.5%，这一轮结束时会按需整理$/);
+  assert.ok(layer.autoFold(agent).length > 0, "and the engine folds");
   layer.settings = base;
 });
 
