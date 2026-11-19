@@ -535,6 +535,11 @@ export default class StrataEngine extends BasicCompactionEngine {
       tiers: [1, 2, 3].map((tier) => snap.strata.tiers[tier]?.count || 0),
       cards: snap.strata.card.count,
       pending: snap.pending?.length || 0,
+      // For the dock's plain-language line (lib/plain.js): requests so far
+      // (the ledger's net), and the route figures foldLines needs, so the
+      // lines follow a settings change before the next turn end.
+      requests: snap.usage.length,
+      route: layer.routeOf(agent),
     });
   }
 
@@ -639,6 +644,8 @@ export default class StrataEngine extends BasicCompactionEngine {
           layer.traceMeasure(agent, "mid-turn");
           await this.ctx.sessions?.flush?.(agent.session);
           this.rememberPrefix(agent);
+          // The dock's usage and plain line follow a mid-turn landing too.
+          this.publishUsage(agent).catch(() => {});
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -79,9 +79,9 @@ test("L1: a card that is not smaller than its span is a rejection: no failure, n
   assert.match(rejection.message, /not smaller than the span/);
   const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
   assert.match(zh, /上次失败\s+本进程内没有/);
-  assert.match(zh, /上次拒收\s+\d\d:\d\d:\d\d  L1 切卡片 cut-\S+：the card .* not smaller than the span .*（校验没通过，不算失败，图标不变色）/);
+  assert.match(zh, /上次拒收\s+\d\d:\d\d:\d\d  L1 切卡片 cut-\S+：卡片（约 \S+）不比原文（约 \S+）小（校验没通过，不算失败，图标不变色）/);
   const en = runCommand(layer, agent, "detail", { language: "en" }).text;
-  assert.match(en, /Last rejection\s+\d\d:\d\d:\d\d  L1 card cut-\S+: .*not a failure/);
+  assert.match(en, /Last rejection\s+\d\d:\d\d:\d\d  L1 card cut-\S+: the card \(~\S+\) is not smaller than the original \(~\S+\) .*not a failure/);
   assert.match(layer.status(agent), /Last rejected landing \(a check refused it; not a failure, nothing changed\): card cut-/);
 });
 

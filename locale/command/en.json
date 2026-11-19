@@ -3,7 +3,7 @@
   "help": {
     "title": "Strata Context: /strata commands",
     "status": "Short summary: context use, layers, cache hit rate",
-    "detail": "Detail in sections: overview, layers, automatic folds, foldable ranges, cache and cost, recent changes",
+    "detail": "Detail in sections, for troubleshooting: overview, layers, automatic folds, foldable ranges, cache and cost, recent changes",
     "detailFull": "Detail plus every message in each foldable range",
     "search": "Search this session's local archive",
     "searchExample": "/strata search build error",
@@ -142,7 +142,8 @@
     "versionNoCommit": "  ·  no commit ({source})",
     "lastRejection": "Last rejection",
     "lastRejectionNone": "none in this process",
-    "lastRejectionValue": "{time}  {what}: {message}  (a check refused it; not a failure, the dock stays as it is)"
+    "lastRejectionValue": "{time}  {what}: {message}  (a check refused it; not a failure, the dock stays as it is)",
+    "ruleOnNoNudge": "at turn end above {pct} (reminders are off, so no waiting for them); oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)"
   },
   "purgeEnded": {
     "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",
@@ -198,5 +199,54 @@
     "card": "turned {count} older tool output(s) into a card",
     "dropped": "dropped {count} superseded runtime-context snapshot(s)",
     "join": "; "
+  },
+  "rejection": {
+    "small": "too little to reclaim: ~{tokens}, below the {min} minimum per landing",
+    "payback": "not worth it: ~{miss} would be re-billed and {after}{limit}",
+    "paybackAfter": "it pays back only after {n} requests",
+    "paybackNever": "it never pays back",
+    "paybackLimit": ", more than the ~{n} allowed ({why})",
+    "limitPayback": "payback limit",
+    "limitRemaining": "requests expected to remain",
+    "cardNotSmaller": "the card (~{card}) is not smaller than the original (~{span})",
+    "summaryNotSmaller": "the summary (~{summary}) is not smaller than the range (~{range})",
+    "shadowNotSmaller": "the summary ({summary}) is not smaller than what it replaces ({range})",
+    "foldNotSmaller": "the fold ({fold}) is not smaller than its range ({range})",
+    "spanGone": "the selected range is no longer in the context",
+    "estimate": "reclaims ~{reclaim}; one-time cache miss on ~{miss}; {after}",
+    "estimateAfter": "pays back after {n} requests",
+    "estimateNever": "never pays back",
+    "largerRange": "; pick a larger range or leave it",
+    "shorterSummary": "; pick a larger range or write a shorter summary"
+  },
+  "plain": {
+    "lineSaved": "Strata · ~{tokens} saved this session (tidied {count}×)",
+    "lineEarly": "Strata · tidied {count}×, saving starts in ~{n} requests",
+    "lineCount": "Strata · tidied {count}×",
+    "lineIdle": "Strata · context {pct}, nothing tidied yet",
+    "lineWaiting": "Strata ready",
+    "lastNone": "Last: nothing tidied yet.",
+    "last": "Last: {time} {what}, freeing ~{tokens}",
+    "lastNoTokens": "Last: {time} {what}",
+    "whatAuto": "folded {n} older part(s) into summaries automatically",
+    "whatModel": "the model folded {n} older part(s) into summaries",
+    "whatCard": "turned an older tool output into a card",
+    "whatCtx": "cleared outdated runtime context",
+    "whatOfficial": "DSH wrote an official summary",
+    "usage": "Now: the context is about {pct} full ({used} / {window})",
+    "nextOff": "Next: automatic tidy-ups are off; only the model's own folds and DSH's official summary",
+    "nextLine": "Next: at about {pct} it tidies up at the end of that turn",
+    "nextNudge": "Next: at about {pct} it reminds the model to fold; after {n} unanswered reminders, or at {force}, it tidies up at turn end",
+    "nextAbove": "Next: past the {pct} line, it tidies up at the end of this turn if needed",
+    "nextMidTurn": "; above {force} it also tidies up mid-turn",
+    "savedNote": "~{reclaimed} freed in all; \"saved\" is priced at cache rates, re-billing deducted (see /strata detail)",
+    "rejection": "{time} a {what} was skipped: {reason} (a check stopped it; not a failure)",
+    "rejectionCard": "card",
+    "rejectionFold": "fold",
+    "error": "{time} {what} failed: {message} (see /strata detail)",
+    "intro": "Strata is working: mode {mode}. Change it in Plugins → Strata Context → Strata settings.",
+    "introClose": "Got it",
+    "lineIdleRestart": "Strata · context {pct}, nothing tidied since start",
+    "lastNoneRestart": "Last: nothing tidied since DSH started; the conversation already has {folds} fold(s) and {cards} card(s)."
   }
 }

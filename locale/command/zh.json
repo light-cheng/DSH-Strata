@@ -3,7 +3,7 @@
   "help": {
     "title": "Strata 分层上下文：/strata 命令",
     "status": "简要状态：上下文占用、各层大小、缓存命中率",
-    "detail": "分节详情：概览、分层、自动折叠、可折叠范围、缓存与成本、最近变化",
+    "detail": "分节详情（排错用）：概览、分层、自动折叠、可折叠范围、缓存与成本、最近变化",
     "detailFull": "详情，并列出每个可折叠范围里的每条消息",
     "search": "检索本会话的本地存档",
     "searchExample": "/strata search 构建错误",
@@ -142,7 +142,8 @@
     "versionNoCommit": "  ·  无提交号（{source}）",
     "lastRejection": "上次拒收",
     "lastRejectionNone": "本进程内没有",
-    "lastRejectionValue": "{time}  {what}：{message}（校验没通过，不算失败，图标不变色）"
+    "lastRejectionValue": "{time}  {what}：{message}（校验没通过，不算失败，图标不变色）",
+    "ruleOnNoNudge": "轮末超过 {pct} 时（提醒模型折叠已关，不等提醒），从最早的内容开始折叠，直到约 {target}（固定开销 + 剩余空间的 {targetPct}）"
   },
   "purgeEnded": {
     "warning": "/strata purge ended 会删除已结束会话的本地存档：{sessions} 个会话，{mb} MB（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），且无法撤销。之后再打开这些会话，它们的折叠和卡片原文无法从存档还原（DSH 会话日志里仍有原始事件）。",
@@ -198,5 +199,54 @@
     "card": "把 {count} 段旧工具输出压成了卡片",
     "dropped": "清理了 {count} 份过期的运行时上下文",
     "join": "，"
+  },
+  "rejection": {
+    "small": "回收太少：只有约 {tokens}，低于每次至少 {min} 的下限",
+    "payback": "不划算：要重新计费约 {miss}，{after}{limit}",
+    "paybackAfter": "{n} 次请求后才回本",
+    "paybackNever": "永远回不了本",
+    "paybackLimit": "，超过允许的约 {n} 次（{why}）",
+    "limitPayback": "回本上限",
+    "limitRemaining": "预计剩下的请求数",
+    "cardNotSmaller": "卡片（约 {card}）不比原文（约 {span}）小",
+    "summaryNotSmaller": "摘要（约 {summary}）不比原范围（约 {range}）小",
+    "shadowNotSmaller": "摘要（{summary}）不比被替换的内容（{range}）小",
+    "foldNotSmaller": "折叠后（{fold}）不比原范围（{range}）小",
+    "spanGone": "选中的范围已经不在上下文里了",
+    "estimate": "可回收约 {reclaim}；一次性缓存未命中约 {miss}；{after}",
+    "estimateAfter": "{n} 次请求后回本",
+    "estimateNever": "回不了本",
+    "largerRange": "；可以选更大的范围，或者不折",
+    "shorterSummary": "；可以选更大的范围，或写短一点的摘要"
+  },
+  "plain": {
+    "lineSaved": "Strata · 本会话已省约 {tokens}（{count} 次整理）",
+    "lineEarly": "Strata · 已整理 {count} 次，约 {n} 次请求后开始省",
+    "lineCount": "Strata · 已整理 {count} 次",
+    "lineIdle": "Strata · 上下文 {pct}，还没整理过",
+    "lineWaiting": "Strata 待命",
+    "lastNone": "最近：还没有整理过。",
+    "last": "最近：{time} {what}，腾出约 {tokens}",
+    "lastNoTokens": "最近：{time} {what}",
+    "whatAuto": "自动把 {n} 段较早的内容折成了摘要",
+    "whatModel": "模型把 {n} 段较早的内容折成了摘要",
+    "whatCard": "把一段较早的工具输出压成了卡片",
+    "whatCtx": "清掉了过期的运行环境信息",
+    "whatOfficial": "DSH 做了一次官方摘要",
+    "usage": "现在：上下文用了约 {pct}（{used} / {window}）",
+    "nextOff": "下次：自动整理已关，只靠模型自己折叠和 DSH 官方摘要",
+    "nextLine": "下次：涨到约 {pct} 时，会在这一轮结束时整理",
+    "nextNudge": "下次：涨到约 {pct} 时先提醒模型折叠；提醒 {n} 次没回应，或涨到 {force}，就在轮末自动整理",
+    "nextAbove": "下次：已过整理线 {pct}，这一轮结束时会按需整理",
+    "nextMidTurn": "；一轮中途超过 {force} 也会先整理",
+    "savedNote": "累计腾出约 {reclaimed}；「已省」按缓存价格折算，扣掉了重新计费（细节见 /strata detail）",
+    "rejection": "{time} 有一次{what}没做：{reason}（校验拦下的，不算失败）",
+    "rejectionCard": "切卡片",
+    "rejectionFold": "折叠",
+    "error": "{time} {what}失败：{message}（/strata detail 里有详情）",
+    "intro": "Strata 已在工作：当前是{mode}。可以在 插件 → Strata 分层上下文 → Strata 设置 里调整。",
+    "introClose": "知道了",
+    "lineIdleRestart": "Strata · 上下文 {pct}，本次启动后还没整理",
+    "lastNoneRestart": "最近：本次启动后还没有整理；对话里已有 {folds} 个折叠、{cards} 张卡片。"
   }
 }

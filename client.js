@@ -229,6 +229,8 @@ window.__ModuleLoader__.load({
      * What the dock shows. Red only for a stored compaction failure (a card or
      * fold that did not land); a status poll that keeps failing is a neutral
      * "status unavailable", since nothing is known about compaction then.
+     * Otherwise the server's plain-language line (lib/plain.js); red, grey and
+     * the landing label win over it. `hover` is the card shown on hover.
      */
     function dockState(t, { data, misses, play, now }) {
       let state = 'idle'
@@ -237,23 +239,29 @@ window.__ModuleLoader__.load({
       // Error age by the server's clock (the status carries `now`).
       const serverNow = data?.now ?? now
       const usage = data?.usage
-      if (usage && usage.window > 0) label = `${t('idle')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%`
+      const plain = data?.plain
+      let hover = Array.isArray(plain?.hover) ? plain.hover.map(String) : []
+      if (typeof plain?.line === 'string' && plain.line) label = plain.line
+      else if (usage && usage.window > 0) label = `${t('idle')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%`
       if (data && data.takeover && data.takeover !== 'active' && data.takeover !== 'unknown') {
         state = 'off'
         label = t('notActive')
+        hover = []
       } else if (data?.error && serverNow - data.error.at < ERROR_MS) {
         state = 'error'
         label = t(data.error.layer === 'L2' ? 'errorFold' : data.error.layer === 'L1' ? 'errorCard' : 'error')
         title = t('errorTitle')
+        hover = [title, ...hover]
       } else if (misses >= UNAVAILABLE_AFTER) {
         state = 'unavailable'
         label = t('unavailable')
         title = t('unavailableTitle')
+        hover = [title]
       } else if (play?.event && now < play.until) {
         state = 'success'
         label = eventLabel(t, play.event)
       }
-      return { state, label, title }
+      return { state, label, title, hover }
     }
 
     function StrataDock({ ctx, t, sessionId }) {
@@ -261,6 +269,8 @@ window.__ModuleLoader__.load({
       // Consecutive failed polls. A failed poll is not a failed compaction.
       const [misses, setMisses] = useState(0)
       const [play, setPlay] = useState({ key: 0, mode: 'idle', event: null, until: 0 })
+      // The first-run note (sent once per profile by the server); stays until closed.
+      const [intro, setIntro] = useState(null)
       const seen = useRef(null)
       const [, setTick] = useState(0)
 
@@ -278,6 +288,7 @@ window.__ModuleLoader__.load({
             if (!live) return
             setData(next)
             setMisses(0)
+            if (next?.intro?.text) setIntro(next.intro)
             // The first poll only records where we are; old events do not replay.
             if (seen.current === null) {
               seen.current = next.events?.[next.events.length - 1]?.at ?? 0
@@ -311,7 +322,7 @@ window.__ModuleLoader__.load({
         }
       }, [sessionId])
 
-      const { state, label, title } = dockState(t, { data, misses, play, now: Date.now() })
+      const { state, label, title, hover } = dockState(t, { data, misses, play, now: Date.now() })
 
       const open = () => {
         try {
@@ -321,11 +332,27 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const cardId = `strata-dock-card-${sessionId || 'none'}`
       return h(
-        'button',
-        { type: 'button', className: 'strata-dock', title, onClick: open, 'data-state': state },
-        h(StrataGlyph, { state, mode: play.mode, playKey: play.key }),
-        h('span', { className: 'strata-dock-text' }, label),
+        'span',
+        { className: 'strata-dock-wrap', 'data-state': state },
+        h(
+          'button',
+          { type: 'button', className: 'strata-dock', title: hover.length ? undefined : title, 'aria-describedby': hover.length ? cardId : undefined, onClick: open, 'data-state': state },
+          h(StrataGlyph, { state, mode: play.mode, playKey: play.key }),
+          h('span', { className: 'strata-dock-text' }, label),
+        ),
+        hover.length && !intro
+          ? h('span', { id: cardId, role: 'tooltip', className: 'strata-dock-card' }, hover.map((line, index) => h('span', { key: index, className: 'strata-dock-card-line' }, line)))
+          : null,
+        intro
+          ? h(
+              'span',
+              { role: 'status', className: 'strata-intro' },
+              h('span', { className: 'strata-intro-text', onClick: open }, intro.text),
+              h('button', { type: 'button', className: 'strata-intro-close', onClick: () => setIntro(null) }, intro.close || 'OK'),
+            )
+          : null,
       )
     }
 
@@ -337,6 +364,13 @@ window.__ModuleLoader__.load({
       .strata-glyph.is-error{color:var(--dsw-alias-state-error-primary)}
       .strata-glyph.is-off{color:var(--dsw-alias-label-tertiary)}
       .strata-dock-text{overflow:hidden;text-overflow:ellipsis}
+      .strata-dock-wrap{position:relative;display:inline-flex;max-width:100%}
+      .strata-dock-card,.strata-intro{position:absolute;left:0;bottom:calc(100% + 6px);z-index:60;box-sizing:border-box;width:max-content;min-width:240px;max-width:min(380px,90vw);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 6px 20px rgba(0,0,0,.14);padding:8px 10px;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary);white-space:normal;text-align:left}
+      .strata-dock-card{display:none;flex-direction:column;gap:2px;pointer-events:none}
+      .strata-dock-wrap:hover .strata-dock-card,.strata-dock-wrap:focus-within .strata-dock-card{display:flex}
+      .strata-intro{display:flex;align-items:flex-start;gap:10px;color:var(--dsw-alias-label-primary)}
+      .strata-intro-text{cursor:pointer}
+      .strata-intro-close{flex:none;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;padding:1px 8px;cursor:pointer}
     `
 
     // ---------------------------------------------------------------- settings page
@@ -377,7 +411,7 @@ window.__ModuleLoader__.load({
       modeApplies: 'Applies immediately (next turn end or step). On small windows the lines are lowered below DSH’s official summary line; /strata detail shows it.',
       advanced: 'Custom values',
       autoFoldPct: 'Auto-fold line (% of window)',
-      autoFoldPctHint: 'At turn end above this, after 2 unanswered reminders, Strata digests the oldest work. Applies immediately.',
+      autoFoldPctHint: 'At turn end above this, after 2 unanswered reminders (right away when reminders are off), Strata digests the oldest work. Applies immediately.',
       autoFoldForcePct: 'Force line (% of window)',
       autoFoldForcePctHint: 'Above this it folds without waiting for reminders. Applies immediately.',
       autoFoldTargetPct: 'Target (% of the room after fixed overhead)',
@@ -392,7 +426,7 @@ window.__ModuleLoader__.load({
       autoFold: 'Automatic folds',
       autoFoldHint: 'When reminders go unanswered, Strata digests the oldest work itself (restorable). Off: only the model’s own folds and DSH’s official summary. Applies immediately.',
       nudge: 'Remind the model to fold',
-      nudgeHint: 'Adds a short note when there is a lot to fold. Off: folding is left to automatic digests; the compress tool stays available. STRATA_NUDGE=off also turns it off. Applies immediately.',
+      nudgeHint: 'Adds a short note when there is a lot to fold. Off: folding is left to automatic digests, which then start at the auto-fold line without waiting; the compress tool stays available. STRATA_NUDGE=off also turns it off. Applies immediately.',
       archive: 'Archive',
       archiveDir: 'Location',
       archiveDirHint: 'Empty = <DSH home>/strata. Applies to new sessions; open sessions keep their folder.',
@@ -428,7 +462,7 @@ window.__ModuleLoader__.load({
       modeApplies: '立即生效（下一次轮末或下一步）。窗口较小时，各条线会自动降到 DSH 官方摘要触发线之下；/strata detail 里能看到。',
       advanced: '自定义数值（仅在自定义模式下生效）',
       autoFoldPct: '自动折叠线（占窗口 %）',
-      autoFoldPctHint: '轮末超过这条线、且连续 2 次提醒没有回应时，Strata 从最早的内容开始折叠。立即生效。',
+      autoFoldPctHint: '轮末超过这条线、且连续 2 次提醒没有回应时（提醒关掉时不等提醒），Strata 从最早的内容开始折叠。立即生效。',
       autoFoldForcePct: '强制折叠线（占窗口 %）',
       autoFoldForcePctHint: '超过这条线时不等提醒，直接折叠。立即生效。',
       autoFoldTargetPct: '折叠目标（固定开销之外剩余空间的 %）',
@@ -443,7 +477,7 @@ window.__ModuleLoader__.load({
       autoFold: '自动折叠',
       autoFoldHint: '提醒没有回应时，Strata 自己把最早的内容折成摘要（可还原）。关掉后只剩模型自己的折叠和 DSH 官方摘要。立即生效。',
       nudge: '提醒模型折叠',
-      nudgeHint: '可折叠的内容多时给模型加一句提醒。关掉后只靠自动折叠；compress 工具仍可用。环境变量 STRATA_NUDGE=off 也能关掉。立即生效。',
+      nudgeHint: '可折叠的内容多时给模型加一句提醒。关掉后只靠自动折叠，到自动折叠线就直接折叠、不等提醒；compress 工具仍可用。环境变量 STRATA_NUDGE=off 也能关掉。立即生效。',
       archive: '存档',
       archiveDir: '存档位置',
       archiveDirHint: '留空 = <DSH 主目录>/strata。对新会话生效；已打开的会话继续用原来的文件夹。',
