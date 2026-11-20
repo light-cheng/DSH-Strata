@@ -81,10 +81,10 @@ From npm:
 dsh plugin --profile desktop add @lightcheng/dsh-strata
 ```
 
-From a GitHub release tarball (no npm):
+From GitHub (the current `main`, no npm):
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.1/lightcheng-dsh-strata-0.4.1.tgz
+dsh plugin --profile desktop add github:light-cheng/DSH-Strata
 ```
 
 From a local checkout:
