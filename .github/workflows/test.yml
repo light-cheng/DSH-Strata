@@ -26,3 +26,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
+
+  # One check named `test` for the main branch ruleset, which cannot match
+  # the matrix job names (`ubuntu-latest / node 22`, …). Fails unless every
+  # matrix job succeeded; runs even when one of them failed or was cancelled.
+  test-summary:
+    name: test
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All platforms passed
+        env:
+          RESULT: ${{ needs.test.result }}
+        run: |
+          echo "matrix result: $RESULT"
+          test "$RESULT" = success
