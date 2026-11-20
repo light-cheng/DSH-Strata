@@ -191,6 +191,8 @@ npm run check
 
 更新说明中英双语，英文在前：[RELEASE.md](RELEASE.md)。
 
+在 GitHub 上发布 release，就会自动发布到 npm。具体做法是 `.github/workflows/release.yml` 通过 trusted publishing 发布，并附带 provenance。release 的 tag 必须写成 `v` 加上 `package.json` 里的版本号；如果标成 prerelease，就发到 `next` 这个 dist-tag。
+
 ## 许可
 
 MIT，见 [`LICENSE`](LICENSE)。

@@ -191,6 +191,8 @@ npm run check
 
 Release notes are bilingual with English first: [RELEASE.md](RELEASE.md).
 
+Publishing a GitHub release publishes the package to npm automatically (`.github/workflows/release.yml`, trusted publishing with provenance). The release tag must be `v` + the `package.json` version; a prerelease goes to the `next` dist-tag.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
