@@ -115,7 +115,12 @@ test("plain hover: rejection after the last landing, failure first; next line fo
   assert.equal(next(cost, 550_000, { unanswered: 2 }), "下次：已过整理线 50%，这一轮结束时会按需整理");
   assert.equal(next(cost, 620_000), "下次：已过整理线 50%，这一轮结束时会按需整理", "above the force line no reminders are needed");
   // After a digest that folded all it could, the next waits for 50K more foldable work (or 75%).
-  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 120_000, scale: 1 }), "下次：刚整理过，等可折叠的内容再多约 50.0K，或涨到 75%，再在轮末整理");
+  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 120_000, scale: 1 }), "下次：刚整理过，要等新内容再积累约 50.0K（目前约 20.0K），或占用涨到 75%（兜底线），才会在轮末再整理");
+  // Both sides by the provider's count: l2.js compares local growth with 50K / scale; 20K local × 1.2 = 24K.
+  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 120_000, scale: 1.2 }), "下次：刚整理过，要等新内容再积累约 50.0K（目前约 24.0K），或占用涨到 75%（兜底线），才会在轮末再整理");
+  assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 142_000, scale: 1.2 }), "下次：已过整理线 50%，这一轮结束时会按需整理", "42K local × 1.2 = 50.4K: past the step");
+  recordUsage(id, { totalTokens: 620_000, window: 1_000_000, requests: 5, route: { maxTokens: 16_000 }, autoExhausted: true, autoFoldedAt: 100_000, foldable: 120_000, scale: 1 });
+  assert.equal(plainStatus(id, en, { settings: cost }).hover[2], "Next: just tidied; it tidies again at turn end once about 50.0K of new content builds up (about 20.0K so far), or usage reaches 75% (the fallback line)");
   assert.equal(next(cost, 620_000, { autoExhausted: true, autoFoldedAt: 100_000, foldable: 160_000, scale: 1 }), "下次：已过整理线 50%，这一轮结束时会按需整理");
   assert.match(plainStatus(id, en, { settings: cost }).hover[2], /^Next: past the 50% line/);
   assert.equal(next(cost, 550_000, { unanswered: 0 }).length > 0, true);

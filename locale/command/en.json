@@ -59,7 +59,7 @@
     "tailValue": "{rounds} tool rounds, ~{tokens}{cap}",
     "tailCapped": ", capped at {pct} of the window",
     "tailUnknown": "unknown",
-    "ranges": "4. Foldable ranges (~{tokens} in total)",
+    "ranges": "4. Foldable ranges (local estimate ~{tokens} in total, ~{provider} by the provider's count)",
     "rangesNone": "none",
     "range": "{start}–{end}  ~{tokens}, {count} messages{cards}{folds}",
     "rangeCards": ", {n} cards",
@@ -143,7 +143,10 @@
     "lastRejection": "Last rejection",
     "lastRejectionNone": "none in this process",
     "lastRejectionValue": "{time}  {what}: {message}  (a check refused it; not a failure, the dock stays as it is)",
-    "ruleOnNoNudge": "at turn end above {pct} (reminders are off, so no waiting for them); oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)"
+    "ruleOnNoNudge": "at turn end above {pct} (reminders are off, so no waiting for them); oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)",
+    "ruleGrowth": "; after one lands, the next waits until about {step} more can be folded, or usage passes {forced} (the force line, a fallback)",
+    "scaleNote": " (converted at ×{scale})",
+    "scaleNoteRange": " (converted at ×{from}–×{to})"
   },
   "purgeEnded": {
     "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",
@@ -169,7 +172,7 @@
     "belowForce": "skipped ({ratio}: below {force} and {unanswered} of {needed} unanswered nudges)",
     "underTarget": "skipped (already under the target ~{target})",
     "pendingCovers": "skipped (pending fold {ids} covers the target)",
-    "waitGrowth": "skipped (waiting for {step} foldable growth since the last digest; +{sofar} local so far)",
+    "waitGrowth": "skipped (just tidied: waiting for about {step} more foldable content by the provider's count, ~{local} local; {sofar} local so far)",
     "unreachable": "skipped (target ~{target} unreachable: what is left is {current}fixed, protected or already folded)",
     "unreachableCurrent": "in the current turn, ",
     "proposed": "proposed {ids} at {ratio} (target ~{target}){stop}",
@@ -259,7 +262,12 @@
     "lineIdleRestart": "Strata · context {pct}, nothing tidied since start",
     "lastNoneRestart": "Last: nothing tidied since DSH started; the conversation already has {folds} fold(s) and {cards} card(s).",
     "nextWaitNudge": "Next: past {pct}; after {left} more unanswered reminder(s), or at {force}, it tidies up at turn end",
-    "nextWaitGrowth": "Next: just tidied; once about {step} more can be folded, or at {forced}, it tidies up at turn end",
+    "nextWaitGrowth": "Next: just tidied; it tidies again at turn end once about {step} of new content builds up (about {sofar} so far), or usage reaches {forced} (the fallback line)",
     "errorTimeout": "{time} {what} timed out (see /strata detail)"
+  },
+  "ids": {
+    "range": "{first}–{last} ({n} folds)",
+    "some": "{list} and others ({n} folds)",
+    "sep": ", "
   }
 }

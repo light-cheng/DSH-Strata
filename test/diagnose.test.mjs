@@ -223,6 +223,40 @@ test("detail shows payback, break-even and the projected net (zh)", () => {
   assert.match(en, /Payback\s+last change f1: ~89 requests to pay back, 0 so far \(passed the cost check: expected ~200 more requests\)/);
 });
 
+test("detail: a batch of folds is named by its id range, never half an id; payback and net say which ratio converted them", () => {
+  const { session, agent, layer } = setup();
+  turn(session, "a", 2, 1000);
+  const ids = Array.from({ length: 8 }, (_, i) => `f${180 - i}`).join(",");
+  layer.recordChange(agent, { layer: "L2", id: ids, start: 3, tokensFromStart: 216_500, reclaimed: 19_900, landing: "cost", scale: 1.184 });
+  const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(zh, /回本进度\s+最近一次 f180–f173（8 段）：预计 ~89 次请求回本，已过 0 次（[^\n]*）（按 ×1\.18 换算）\n/);
+  assert.doesNotMatch(zh, /f1\d\d,…|f17,|f1,：/);
+  assert.match(zh, /估算净节省\s+约 −176\.9K tokens（[^\n]*）（按 ×1\.18 换算）；刚落地时为负/);
+  assert.match(zh, /\d\d:\d\d:\d\d  [^\n]*f180–f173（8 段）/, "recent changes too");
+  const en = runCommand(layer, agent, "detail", { language: "en" }).text;
+  assert.match(en, /Payback\s+last change f180–f173 \(8 folds\): ~89 requests[^\n]* \(converted at ×1\.18\)\n/);
+  assert.match(en, /Estimated net saving\s+~−176\.9K tokens[^\n]* \(converted at ×1\.18\)/);
+  // A second landing at another ratio: the net row gives the range.
+  layer.recordChange(agent, { layer: "L2", id: "f190,f185", start: 3, tokensFromStart: 10_000, reclaimed: 5_000, landing: "cost", scale: 1.3 });
+  const again = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(again, /估算净节省\s+[^\n]*（按 ×1\.18–×1\.30 换算）/);
+  assert.match(again, /回本进度\s+最近一次 f190、f185：[^\n]*（按 ×1\.30 换算）/);
+});
+
+test("detail rule names the growth gate and the 75% fallback line; ranges say local and give the provider's count", () => {
+  const { session, agent, layer } = setup();
+  turn(session, "a", 2, 1000);
+  const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
+  assert.match(zh, /规则\s+[^\n]*；整理过一次后，要等可折叠内容再增长约 50\.0K，或占用超过 75%（强制线，兜底），才再整理/);
+  assert.match(zh, /4\. 可折叠范围（本地估算共约 \S+，约合服务商口径 \S+）/);
+  const en = runCommand(layer, agent, "detail", { language: "en" }).text;
+  assert.match(en, /Rule\s+[^\n]*; after one lands, the next waits until about 50\.0K more can be folded, or usage passes 75% \(the force line, a fallback\)/);
+  assert.match(en, /4\. Foldable ranges \(local estimate ~\S+ in total, ~\S+ by the provider's count\)/);
+  // The last turn end's "waiting for growth" outcome is translated, not left in English.
+  layer.state(agent).lastAutoFold = { at: Date.now(), outcome: "skipped (waiting for +50.0K (provider; ~42.2K local at ×1.18) foldable growth since the last digest; +8.1K local so far)" };
+  assert.match(runCommand(layer, agent, "detail", { language: "zh" }).text, /跳过（刚整理过：等可折叠内容再增长约 50\.0K（服务商口径，本地约 42\.2K）；本地估算目前已增长 8\.1K）/);
+});
+
 // ------------------------------------------------------------ cost: no model fold mid-turn
 
 test("cost preset: a pending model fold never lands mid-turn, even far above the force line; it lands at the turn end (agent idle after a completed turn)", async () => {

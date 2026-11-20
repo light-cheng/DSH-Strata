@@ -69,7 +69,8 @@ test("gate: defaults, floor in provider tokens, payback limit, forced skips only
 test("L1: a card that is not smaller than its span is a rejection: no failure, no red dock, its own detail line", async () => {
   const { engine, session, agent, layer } = setup();
   longTask(session);
-  engine.cardFramedTokens = () => 1e9;
+  // No estimate at selection (no meter estimate), so the gate's own check refuses it.
+  engine.cardFramedTokens = (card, phase) => (phase === "select" ? undefined : 1e9);
   await engine.finishTurn(agent);
   assert.equal(cards(layer, session), 0);
   assert.equal(lastActivityError(session.id), null);
@@ -83,6 +84,56 @@ test("L1: a card that is not smaller than its span is a rejection: no failure, n
   const en = runCommand(layer, agent, "detail", { language: "en" }).text;
   assert.match(en, /Last rejection\s+\d\d:\d\d:\d\d  L1 card cut-\S+: the card \(~\S+\) is not smaller than the original \(~\S+\) .*not a failure/);
   assert.match(layer.status(agent), /Last rejected landing \(a check refused it; not a failure, nothing changed\): card cut-/);
+});
+
+test("L1: a card estimated at selection to be no smaller than its span is skipped quietly: not written, no rejection", async () => {
+  const { ctx, engine, session, agent, layer } = setup();
+  longTask(session);
+  const phases = [];
+  engine.cardFramedTokens = (card, phase) => {
+    phases.push(phase);
+    return 1e9;
+  };
+  await engine.finishTurn(agent);
+  assert.deepEqual(phases, ["select"], "the gate never runs");
+  assert.equal(cards(layer, session), 0);
+  assert.equal(lastActivityRejection(session.id), null, "no 'last rejection' line to refresh");
+  assert.equal(lastActivityError(session.id), null);
+  assert.ok(ctx.logs.some((line) => /^debug strata cut skipped: the card \(~\S+\) would not be smaller than the span \(~\S+\)$/.test(line)));
+  assert.equal(ctx.logs.filter((line) => /cut rejected/.test(line)).length, 0);
+});
+
+test("L1: a refused span is not tried again while its text is the same; new content or the force line retries", async () => {
+  const { ctx, engine, session, agent, layer } = setup();
+  longTask(session);
+  layer.settings.minLandingTokens = 1e9;
+  await engine.finishTurn(agent);
+  const first = lastActivityRejection(session.id);
+  assert.match(first.message, /below the .* minimum per landing/);
+  // Two more turn ends with no new tool output: same span, same text.
+  for (const reply of ["ok", "still ok"]) {
+    addUser(session, "thanks");
+    addAssistantText(session, reply);
+    await engine.finishTurn(agent);
+  }
+  assert.equal(ctx.logs.filter((line) => /strata cut rejected/.test(line)).length, 1, "refused once, not every turn");
+  assert.equal(lastActivityRejection(session.id).at, first.at, "the 'last rejection' time is not refreshed");
+  assert.equal(ctx.logs.filter((line) => /strata cut skipped: the same span was refused before/.test(line)).length, 2);
+  // New tool output moves the span: it is a different span and is tried.
+  addUser(session, "one more shard");
+  for (let i = 8; i < 16; i += 1) addToolRound(session, { command: `npm test -- shard ${i}`, output: `${filler(`shard-${i} PASS`, 12000)}\n[exit code: 0]` });
+  addAssistantText(session, "done");
+  await engine.finishTurn(agent);
+  assert.equal(ctx.logs.filter((line) => /strata cut rejected/.test(line)).length, 2, ctx.logs.filter((l) => /cut/.test(l)).join("\n"));
+  // Above the force line the cost check is skipped: one retry; the floor still refuses it, then it rests.
+  const window = await layer.resolveWindow(agent);
+  const measure = ctx.tokenMeter.measure;
+  ctx.tokenMeter.measure = (s) => ({ ...measure(s), totalTokens: Math.ceil(window * layer.foldLines(agent).autoFoldForcePct) });
+  layer.settings.l1StopRatio = 1;
+  await engine.finishTurn(agent);
+  await engine.finishTurn(agent);
+  ctx.tokenMeter.measure = measure;
+  assert.equal(ctx.logs.filter((line) => /strata cut rejected/.test(line)).length, 3, "one forced retry, then no more");
 });
 
 test("L1: the check at commit time (meter disagrees after the backup) is a rejection too; a real error is still a failure", async () => {
