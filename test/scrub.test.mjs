@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+const WIN = process.platform === "win32";
+
 const root = mkdtempSync(join(tmpdir(), "strata-scrub-"));
 process.env.STRATA_SHADOW_DIR = join(root, "engine-archive");
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -68,10 +70,11 @@ test("scrubArchive: scrubs txt and fold json, keeps 0600 and the rest byte-ident
   assert.equal(fold.nodes[0].text, `prefix ${DROPPED_CONTEXT_TEXT} suffix`);
   assert.equal(readFileSync(a.fold, "utf8"), JSON.stringify(fold, null, 2), "same JSON layout as writeFold");
   assert.ok(readFileSync(a.clean).equals(cleanBefore), "files without snapshots are not rewritten");
-  for (const file of [a.official, a.cut, a.fold]) assert.equal(statSync(file).mode & 0o777, 0o600);
+  // Windows has no POSIX mode bits (files read back as 0o666).
+  if (!WIN) for (const file of [a.official, a.cut, a.fold]) assert.equal(statSync(file).mode & 0o777, 0o600);
   for (const file of [a.official, a.cut, a.fold]) assert.ok(!readFileSync(file, "utf8").includes("Likes oolong tea"));
   assert.ok(existsSync(join(a.dir, SCRUB_MARKER)));
-  assert.equal(statSync(join(a.dir, SCRUB_MARKER)).mode & 0o777, 0o600);
+  if (!WIN) assert.equal(statSync(join(a.dir, SCRUB_MARKER)).mode & 0o777, 0o600);
 });
 
 test("scrubArchive: runs once per archive and is idempotent", () => {
@@ -126,7 +129,7 @@ test("scrub v2: profile blocks and system sections in official archives; v1 mark
   assert.equal(SCRUB_MARKER, ".scrub-runtime-context-v2");
   assert.equal(readFileSync(official, "utf8"), "# strata-session session-p\n[system prompt omitted]\n\n[user]\nRead the notes.\n\n[system prompt omitted]\n\n[assistant]\nDone.");
   assert.equal(readFileSync(cut, "utf8"), "# strata-session session-p\n[user]\nI said [strata:dropped kind=user-profile] here\n\n[system]\nnot an official archive");
-  assert.equal(statSync(official).mode & 0o777, 0o600);
+  if (!WIN) assert.equal(statSync(official).mode & 0o777, 0o600);
   assert.deepEqual({ files: result.files, blocks: result.blocks }, { files: 2, blocks: 3 });
   rmSync(join(dir, SCRUB_MARKER));
   assert.equal(scrubArchive(dir).files, 0, "idempotent");

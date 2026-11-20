@@ -14,7 +14,7 @@ import { inBatch } from "./lib/marker.js";
 import { isRuntimeSnapshot } from "./lib/stratum.js";
 import { isCancellation, markBusy, recordActivityError, recordActivityRejection, recordUsage } from "./lib/activity.js";
 import { estimateFold, isRejection, kTokens, landingGate, StrataRejection } from "./lib/economics.js";
-import { archiveRootFor, recordCard } from "./lib/archive.js";
+import { archiveRootFor, recordCard, slashPath } from "./lib/archive.js";
 import { readSettings } from "./lib/settings.js";
 import { scheduleScrub } from "./lib/scrub.js";
 
@@ -792,7 +792,7 @@ export default class StrataEngine extends BasicCompactionEngine {
     const id = key || DEFAULT_KEY;
     if (this.shadowFullWarned.has(id)) return;
     this.shadowFullWarned.add(id);
-    this.ctx.logger?.warn?.(`strata: shadow ${shadow} 已用 ${used}，上限 ${cap}。删不掉旧备份，这一刀不切。`);
+    this.ctx.logger?.warn?.(`strata: shadow ${slashPath(shadow)} 已用 ${used}，上限 ${cap}。删不掉旧备份，这一刀不切。`);
   }
 
   warnShadowOversize(key, cap) {

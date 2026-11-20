@@ -8,7 +8,7 @@ import { isPluginShadowName, rotateShadow, sanitizeSessionKey, sessionDir, shado
 assert.throws(() => preflightConfig({ thresholdRatio: 0.05 }), /retainRatio \(0\.16\)/);
 assert.doesNotThrow(() => preflightConfig({ thresholdRatio: 0.8, retainTokens: 8192 }));
 assert.equal(sanitizeSessionKey("../session-abc"), "session-abc");
-assert.equal(sessionDir("/tmp/shadow", "session-abc"), "/tmp/shadow/session-abc");
+assert.equal(sessionDir(join("/tmp", "shadow"), "session-abc"), join("/tmp", "shadow", "session-abc"));
 assert.equal(isPluginShadowName("1793726992383-aaaaaaaa-bbbbbbbb.txt"), true);
 
 const root = join(tmpdir(), `strata-106-${Date.now()}`);

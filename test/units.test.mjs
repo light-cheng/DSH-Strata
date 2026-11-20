@@ -5,6 +5,7 @@ import { buildIndex, searchIndex, tokenize } from "../lib/search.js";
 import { estimateFold, expectedRemainingRequests } from "../lib/economics.js";
 import { parseCompress } from "../lib/fold.js";
 import { minBenefitFor, readSettings } from "../lib/settings.js";
+import { slashPath } from "../lib/archive.js";
 
 const checkpoint = (text) => ({ type: "user/message", data: { source: { kind: "compact-checkpoint" }, content: [{ type: "text", text }] } });
 
@@ -79,4 +80,11 @@ test("cost/benefit estimate", () => {
   assert.equal(settings.forcePct, 0.75);
   assert.equal(minBenefitFor(settings, 1_000_000), 10_000);
   assert.equal(minBenefitFor(settings, 128_000), 5_000);
+});
+
+test("slashPath: paths shown to the model or the user always use /", () => {
+  assert.equal(slashPath(".strata\\restore\\f1-full.txt", "\\"), ".strata/restore/f1-full.txt");
+  assert.equal(slashPath("C:\\Users\\a\\.dsh\\strata", "\\"), "C:/Users/a/.dsh/strata");
+  assert.equal(slashPath(".strata/restore/f1-full.txt", "/"), ".strata/restore/f1-full.txt");
+  assert.equal(slashPath(undefined), "");
 });
