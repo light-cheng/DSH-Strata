@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/light-cheng/dsh-strata.git"
+    "url": "git+https://github.com/light-cheng/DSH-Strata.git"
   },
-  "homepage": "https://github.com/light-cheng/dsh-strata#readme",
+  "homepage": "https://github.com/light-cheng/DSH-Strata#readme",
   "bugs": {
-    "url": "https://github.com/light-cheng/dsh-strata/issues"
+    "url": "https://github.com/light-cheng/DSH-Strata/issues"
   },
   "type": "module",
   "main": "shell.js",
