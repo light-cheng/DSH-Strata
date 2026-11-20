@@ -50,7 +50,7 @@
     "docs/plugin-page.zh-CN.md"
   ],
   "scripts": {
-    "test": "node --test 'test/*.mjs'",
+    "test": "node --test \"test/*.mjs\"",
     "check": "node scripts/check.mjs",
     "eval": "node eval/run.mjs"
   },

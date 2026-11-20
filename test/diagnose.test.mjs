@@ -270,6 +270,6 @@ test("a real DSH agent refuses maintenance while a turn is driving, so a turn-en
   // The engine's only L2 flush paths: finishTurn (agent idle, via runMaintenance) and midTurnFold (off in cost).
   const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
   assert.equal((source.match(/layer\.turnEnd\(/g) || []).length, 1);
-  assert.match(source, /agent\.runMaintenance\(async \(agentSignal\) => \{\n\s+const op = AbortSignal\.any/);
+  assert.match(source, /agent\.runMaintenance\(async \(agentSignal\) => \{\r?\n\s+const op = AbortSignal\.any/);
   assert.equal(translator("zh")("detail.lastError"), "上次失败");
 });
