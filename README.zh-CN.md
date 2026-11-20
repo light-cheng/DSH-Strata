@@ -81,10 +81,10 @@ DeepSeek Harness（DSH）的分层、可还原上下文管理插件。
 dsh plugin --profile desktop add @lightcheng/dsh-strata
 ```
 
-用 GitHub Release 里的预构建包（不经过 npm）：
+从 GitHub 安装（装的是当前的 `main`，不经过 npm）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/light-cheng/dsh-strata/releases/download/v0.4.1/lightcheng-dsh-strata-0.4.1.tgz
+dsh plugin --profile desktop add github:light-cheng/DSH-Strata
 ```
 
 用本地源码：
