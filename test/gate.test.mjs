@@ -1,6 +1,6 @@
 // Rejections are not failures (A), the minimum-gain gate (B), the version line.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -288,11 +288,13 @@ test("version: git checkout (worktree gitdir file, packed refs), pnpm GitHub loc
 
   // This repository: a git checkout, so detail names its commit.
   const own = buildInfo();
-  assert.equal(own.version, "0.4.1");
+  const current = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+  const shown = current.replaceAll(".", "\\.");
+  assert.equal(own.version, current);
   assert.match(own.code, /^[0-9a-f]{8}$/);
   const { agent, layer } = setup();
   const zh = runCommand(layer, agent, "detail", { language: "zh" }).text;
   const overview = zh.split("\n").slice(0, 6).join("\n");
-  assert.match(overview, /版本\s+0\.4\.1  ·  /);
-  assert.match(runCommand(layer, agent, "detail", { language: "en" }).text, /Version\s+0\.4\.1  ·  /);
+  assert.match(overview, new RegExp(`版本\\s+${shown}  ·  `));
+  assert.match(runCommand(layer, agent, "detail", { language: "en" }).text, new RegExp(`Version\\s+${shown}  ·  `));
 });
