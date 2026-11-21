@@ -1,6 +1,6 @@
 # 验收清单：设置页、拒收与最小收益门槛、官方摘要线、压缩行精简、/strata 本地化、状态栏白话与首次提示（Windows，约 15 分钟）
 
-本次验收的是 `main` 上尚未发版的改动。`package.json` 里的版本号仍是 0.4.1，所以要用第 1 步的版本行确认装上的是哪个提交。全程在 DeepSeek Harness 桌面版里操作，用 DeepSeek 官方模型（1M 窗口），命令行步骤用 PowerShell。
+本次验收的是 0.5.0（`package.json` 里的版本号是 0.5.0）。从 GitHub 安装的是 `main` 上的代码，版本号相同的提交可能不止一个，所以要用第 1 步的版本行确认装上的是哪个提交。全程在 DeepSeek Harness 桌面版里操作，用 DeepSeek 官方模型（1M 窗口），命令行步骤用 PowerShell。
 
 **路径约定：**
 - `C:\Users\<you>\dsh-plugin-test` 是你的 Windows 测试文件夹，请换成你自己的实际路径，`<you>` 是你的 Windows 用户名。把这个文件夹作为本次验收的工作区打开。
@@ -42,7 +42,7 @@ Get-ChildItem $dir
 - detail 第 1 节第一行类似下面这样：
 
   ```
-  版本   0.4.1  ·  提交 xxxxxxx（GitHub 安装）  ·  代码 yyyyyyyy
+  版本   0.5.0  ·  提交 xxxxxxx（GitHub 安装）  ·  代码 yyyyyyyy
   ```
 
   其中「提交」后面的 7 位号码，应当和主控告诉你的这次验收的提交号一致。
