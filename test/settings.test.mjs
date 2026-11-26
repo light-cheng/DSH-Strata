@@ -21,6 +21,7 @@ test("Config: defaults, the three modes, unknown mode refused, zh / en descripti
   for (const [key, expected] of Object.entries(PAGE_DEFAULTS)) assert.deepEqual(defaults[key], expected, key);
   assert.equal(defaults.nudge, true, "nudges on by default");
   assert.equal(defaults.archiveKeepDays, 0, "automatic cleanup off by default");
+  assert.equal(defaults.dockDetails, false, "status-bar details off by default");
   for (const mode of ["cost", "quality", "custom"]) assert.equal(value({ mode }).mode, mode);
   assert.throws(() => Config({ mode: "turbo" }));
   for (const key of Object.keys(PAGE_DEFAULTS)) {
@@ -200,4 +201,13 @@ test("archive: ended sessions exclude open ones; upkeep deletes only with keep-d
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("dockDetails: off by default, the page turns it on, STRATA_DOCK_DETAILS=on/off wins", () => {
+  assert.equal(readSettings({}, {}).dockDetails, false);
+  assert.equal(readSettings({}, { dockDetails: true }).dockDetails, true);
+  assert.equal(readSettings({}, { dockDetails: "yes" }).dockDetails, false, "only a boolean from the page");
+  assert.equal(readSettings({ STRATA_DOCK_DETAILS: "on" }, {}).dockDetails, true);
+  assert.equal(readSettings({ STRATA_DOCK_DETAILS: "off" }, { dockDetails: true }).dockDetails, false);
+  assert.equal(readSettings({ STRATA_DOCK_DETAILS: " " }, { dockDetails: true }).dockDetails, true, "blank env falls through to the page");
 });
