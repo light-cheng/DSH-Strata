@@ -19,8 +19,10 @@ window.__ModuleLoader__.load({
     const POLL_MS = 2000
     /** An event older than this when first seen is shown as text only, without animation. */
     const FRESH_MS = 15000
-    /** How long the event label and the success colour stay after an animation. */
+    /** How long a new notice stays on the chip (and the success colour after a landing). */
     const SHOW_MS = 8000
+    /** Notices kept for the hover card, per session, in memory only (cleared on reload or restart). */
+    const RECENT_MAX = 5
     const ERROR_MS = 10 * 60 * 1000
     /** A poll that has not answered by then counts as failed (it is retried on the next tick). */
     const POLL_TIMEOUT_MS = 8000
@@ -29,8 +31,16 @@ window.__ModuleLoader__.load({
 
     const en = {
       idle: 'Strata',
-      waiting: 'Strata ready',
-      notActive: 'Strata not active',
+      context: 'Context',
+      waiting: 'Ready',
+      waitingFull: 'Strata ready',
+      notActive: 'Not active',
+      notActiveFull: 'Strata is not managing this session',
+      cardTitle: 'Strata · Session savings',
+      recent: 'Recent',
+      freed: ', freed ~',
+      openSettings: 'Open settings',
+      more: 'More: /strata detail',
       card: 'Card',
       fold: 'Fold',
       autoFold: 'Auto fold',
@@ -46,8 +56,16 @@ window.__ModuleLoader__.load({
     }
     const zh = {
       idle: 'Strata',
-      waiting: 'Strata 待命',
-      notActive: 'Strata 未接管',
+      context: '上下文',
+      waiting: '待命',
+      waitingFull: 'Strata 待命',
+      notActive: '未接管',
+      notActiveFull: 'Strata 未接管这个会话',
+      cardTitle: 'Strata · 本会话节省',
+      recent: '最近',
+      freed: '，腾出约 ',
+      openSettings: '打开设置',
+      more: '更多：/strata detail',
       card: '切卡片',
       fold: '折叠',
       autoFold: '自动折叠',
@@ -169,9 +187,14 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** Same format as lib/plain.js plainTokens: at most one decimal, M from a million. */
     function kTokens(value) {
       if (!Number.isFinite(value)) return ''
-      return value >= 1000 ? `${(value / 1000).toFixed(1)}K` : String(Math.round(value))
+      const oneDecimal = (n) => n.toFixed(1)
+      if (value < 1000) return String(Math.round(value))
+      const k = Math.round(value / 100) / 10
+      if (k < 1000) return `${oneDecimal(k)}K`
+      return `${oneDecimal(Math.round(value / 100000) / 10)}M`
     }
 
     async function fetchStatus(sessionId, lang) {
@@ -235,56 +258,157 @@ window.__ModuleLoader__.load({
 
     function eventLabel(t, event) {
       const saved = event.reclaimed ? ` −${kTokens(event.reclaimed)}` : ''
-      if (event.layer === 'L1') return `${t('card')}${saved}`
-      if (event.layer === 'L2') return `${t(event.auto ? 'autoFold' : 'fold')} T${event.tier || 1}${saved}`
-      if (event.layer === 'ctx') return `${t('stale')}${saved}`
-      return `${t('official')}${saved}`
+      return `${eventWhat(t, event)}${saved}`
+    }
+
+    function eventWhat(t, event) {
+      if (event.layer === 'L1') return t('card')
+      if (event.layer === 'L2') return `${t(event.auto ? 'autoFold' : 'fold')} T${event.tier || 1}`
+      if (event.layer === 'ctx') return t('stale')
+      return t('official')
+    }
+
+    /** One line of the hover card's recent list: "自动折叠 T1，腾出约 31.5K". */
+    function eventSentence(t, event) {
+      return event.reclaimed ? `${eventWhat(t, event)}${t('freed')}${kTokens(event.reclaimed)}` : eventWhat(t, event)
+    }
+
+    const pad2 = (n) => String(n).padStart(2, '0')
+    function clock(at) {
+      const date = new Date(at)
+      return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+    }
+
+    /** Line kinds a change into counts as a notice (the savings story moved on), not a number that merely ticked. */
+    const NOTICE_KINDS = ['saved', 'early', 'count']
+    /** Which notice the chip shows when one poll brings several. */
+    const NOTICE_RANK = { error: 3, landing: 2, rejection: 1, line: 0 }
+
+    /**
+     * Compare a poll with what was seen before. New notices are a landing, a
+     * new line kind (e.g. "early" → "saved"), a new rejection and a new
+     * failure; work in progress is none. The first poll only records where
+     * we are. Returns the next memo, the landing to play (pickEvent) and the
+     * notices, most important first; each has `text` (the full sentence for
+     * the chip) and `entry` (the timed line for the recent list).
+     */
+    function observe(memo, data, t, now) {
+      const plain = data?.plain || {}
+      const events = Array.isArray(data?.events) ? data.events : []
+      const newestEvent = events.length ? Math.max(...events.map((event) => event.at || 0)) : 0
+      const next = {
+        eventAt: Math.max(memo?.eventAt ?? 0, newestEvent),
+        kind: typeof plain.kind === 'string' ? plain.kind : memo?.kind ?? null,
+        rejectionAt: Math.max(memo?.rejectionAt ?? 0, plain.rejection?.at ?? 0),
+        errorAt: Math.max(memo?.errorAt ?? 0, data?.error?.at ?? 0),
+      }
+      if (!memo) return { memo: next, landing: null, notices: [] }
+      const line = typeof plain.line === 'string' ? plain.line : ''
+      const notices = []
+      const landing = pickEvent(events, memo.eventAt)
+      if (landing) notices.push({ kind: 'landing', at: landing.at, text: line || eventSentence(t, landing), entry: `${clock(landing.at)} ${eventSentence(t, landing)}` })
+      if (data?.error?.at > memo.errorAt) {
+        const text = plain.error?.text || t('errorTitle')
+        notices.push({ kind: 'error', at: data.error.at, text, entry: plain.error?.text || `${clock(data.error.at)} ${errorLabel(t, data.error)}` })
+      }
+      if (plain.rejection?.at > memo.rejectionAt && plain.rejection.text) {
+        notices.push({ kind: 'rejection', at: plain.rejection.at, text: plain.rejection.text, entry: plain.rejection.text })
+      }
+      if (!landing && line && memo.kind && next.kind !== memo.kind && NOTICE_KINDS.includes(next.kind)) {
+        notices.push({ kind: 'line', at: now, text: line, entry: `${clock(now)} ${line}` })
+      }
+      notices.sort((a, b) => NOTICE_RANK[b.kind] - NOTICE_RANK[a.kind])
+      return { memo: next, landing, notices }
+    }
+
+    /** Newest first, at most RECENT_MAX; a replaced notice stays in the list. */
+    function pushRecent(list, notices) {
+      const added = [...notices].sort((a, b) => b.at - a.at).map((notice) => ({ at: notice.at, text: notice.entry }))
+      return [...added, ...(list || [])].slice(0, RECENT_MAX)
+    }
+
+    // ---- the 8 s notice on the chip (details off). Paused while hovered or focused.
+    function startDwell(notice, now, paused = false) {
+      return paused ? { notice, until: 0, left: SHOW_MS } : { notice, until: now + SHOW_MS, left: null }
+    }
+    function pauseDwell(dwell, now) {
+      if (!dwell || dwell.left != null) return dwell
+      if (now >= dwell.until) return null
+      return { ...dwell, left: dwell.until - now }
+    }
+    function resumeDwell(dwell, now) {
+      if (!dwell || dwell.left == null) return dwell
+      return { ...dwell, until: now + dwell.left, left: null }
+    }
+    function dwellActive(dwell, now) {
+      return !!dwell && (dwell.left != null || now < dwell.until)
+    }
+
+    function errorLabel(t, error) {
+      return t(error.layer === 'L2' ? 'errorFold' : error.layer === 'L1' ? 'errorCard' : 'error')
     }
 
     /**
      * What the dock shows. Red only for a stored compaction failure (a card or
      * fold that did not land); a status poll that keeps failing is a neutral
      * "status unavailable", since nothing is known about compaction then.
-     * Otherwise the server's plain-language line (lib/plain.js); red, grey and
-     * the landing label win over it. `hover` is the card shown on hover.
+     * `full` is the whole sentence (lib/plain.js `line`): the aria-label
+     * always, the chip with details on or while a notice is on show (`dwell`),
+     * the hover card's first sentence. Otherwise the chip shows `short`. A
+     * failure stays red until it ages out or the next success; after its
+     * notice the chip keeps the short failure text, it does not settle back.
+     * `hover` holds the card's detail lines.
      */
-    function dockState(t, { data, misses, play, now }) {
+    function dockState(t, { data, misses, play, now, details = data?.dockDetails === true, dwell = null }) {
       let state = 'idle'
-      let label = t('waiting')
       let title = t('open')
       // Error age by the server's clock (the status carries `now`).
       const serverNow = data?.now ?? now
       const usage = data?.usage
       const plain = data?.plain
-      let hover = Array.isArray(plain?.hover) ? plain.hover.map(String) : []
-      if (typeof plain?.line === 'string' && plain.line) label = plain.line
-      else if (usage && usage.window > 0) label = `${t('idle')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%`
+      const fallback = usage && usage.window > 0 ? `${t('context')} ${((usage.totalTokens / usage.window) * 100).toFixed(1)}%` : ''
+      let full = typeof plain?.line === 'string' && plain.line ? plain.line : fallback || t('waitingFull')
+      let short = typeof plain?.short === 'string' && plain.short ? plain.short : typeof plain?.line === 'string' && plain.line ? plain.line : fallback || t('waiting')
+      let hover = Array.isArray(plain?.details) ? plain.details.map(String) : Array.isArray(plain?.hover) ? plain.hover.map(String) : []
+      const last = typeof plain?.last === 'string' ? plain.last : ''
       if (data && data.takeover && data.takeover !== 'active' && data.takeover !== 'unknown') {
         state = 'off'
-        label = t('notActive')
+        short = t('notActive')
+        full = t('notActiveFull')
         hover = []
       } else if (data?.error && serverNow - data.error.at < ERROR_MS) {
         state = 'error'
-        label = t(data.error.layer === 'L2' ? 'errorFold' : data.error.layer === 'L1' ? 'errorCard' : 'error')
+        short = errorLabel(t, data.error)
+        full = plain?.error?.text || short
         title = t('errorTitle')
         hover = [title, ...hover]
       } else if (misses >= UNAVAILABLE_AFTER) {
         state = 'unavailable'
-        label = t('unavailable')
+        short = t('unavailable')
+        full = t('unavailable')
         title = t('unavailableTitle')
         hover = [title]
       } else if (play?.event && now < play.until) {
         state = 'success'
-        label = eventLabel(t, play.event)
       }
-      return { state, label, title, hover }
+      const dwelling = !details && state !== 'off' && state !== 'unavailable' && dwellActive(dwell, now)
+      const label = details ? full : dwelling ? dwell.notice.text : short
+      return { state, label, full, short, title, hover, last: state === 'off' || state === 'unavailable' ? '' : last, dwelling, details }
     }
+
+    /** Recent notices per session; in memory only, so a reload or a DSH restart clears them (/strata detail has the record). */
+    const recentBySession = new Map()
 
     function StrataDock({ ctx, t, sessionId }) {
       const [data, setData] = useState(null)
       // Consecutive failed polls. A failed poll is not a failed compaction.
       const [misses, setMisses] = useState(0)
       const [play, setPlay] = useState({ key: 0, mode: 'idle', event: null, until: 0 })
+      // The notice on the chip (details off), its screen-reader announcement and the recent list.
+      const [dwell, setDwell] = useState(null)
+      const [announce, setAnnounce] = useState('')
+      const [recent, setRecent] = useState(() => recentBySession.get(sessionId) || [])
+      const hovered = useRef(false)
       // The first-run note (sent once per profile by the server); stays until closed.
       const [intro, setIntro] = useState(null)
       // Shown once per mounted dock; acknowledged once it is on screen (retried on later polls if that failed).
@@ -295,6 +419,8 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         seen.current = null
+        setDwell(null)
+        setRecent(recentBySession.get(sessionId) || [])
         if (!sessionId) return
         let live = true
         let inFlight = false
@@ -314,13 +440,10 @@ window.__ModuleLoader__.load({
               introAcked.current = await ackIntro()
             }
             // The first poll only records where we are; old events do not replay.
-            if (seen.current === null) {
-              seen.current = next.events?.[next.events.length - 1]?.at ?? 0
-              return
-            }
-            const latest = pickEvent(next.events, seen.current)
+            const observed = observe(seen.current, next, t, Date.now())
+            seen.current = observed.memo
+            const latest = observed.landing
             if (latest) {
-              seen.current = latest.at
               const fresh = (next.now ?? Date.now()) - latest.at < FRESH_MS
               setPlay((prev) => ({
                 key: fresh ? prev.key + 1 : prev.key,
@@ -328,6 +451,15 @@ window.__ModuleLoader__.load({
                 event: latest,
                 until: Date.now() + SHOW_MS,
               }))
+            }
+            if (observed.notices.length) {
+              const list = pushRecent(recentBySession.get(sessionId), observed.notices)
+              recentBySession.set(sessionId, list)
+              setRecent(list)
+              const top = observed.notices[0]
+              setAnnounce(top.text)
+              // A newer notice replaces the one on show and starts its 8 s again; details on: nothing to settle.
+              setDwell(next.dockDetails === true ? null : startDwell(top, Date.now(), hovered.current))
             }
           } catch {
             if (live) setMisses((count) => count + 1)
@@ -346,6 +478,15 @@ window.__ModuleLoader__.load({
         }
       }, [sessionId])
 
+      // Settle on time rather than on the next poll tick.
+      useEffect(() => {
+        if (!dwell || dwell.left != null) return
+        const wait = dwell.until - Date.now()
+        if (wait <= 0) return
+        const timer = setTimeout(() => setTick((value) => value + 1), wait + 20)
+        return () => clearTimeout(timer)
+      }, [dwell])
+
       // Acknowledge only after the note rendered (two-phase: the server records it on this POST).
       useEffect(() => {
         if (!intro || introAcked.current) return
@@ -358,7 +499,9 @@ window.__ModuleLoader__.load({
         }
       }, [intro])
 
-      const { state, label, title, hover } = dockState(t, { data, misses, play, now: Date.now() })
+      const now = Date.now()
+      const view = dockState(t, { data, misses, play, now, dwell })
+      const { state, label, full, hover, last } = view
 
       const open = () => {
         try {
@@ -367,19 +510,51 @@ window.__ModuleLoader__.load({
           // Navigation is optional.
         }
       }
+      const pause = () => {
+        hovered.current = true
+        setDwell((current) => pauseDwell(current, Date.now()))
+      }
+      const resume = () => {
+        hovered.current = false
+        setDwell((current) => resumeDwell(current, Date.now()))
+      }
+      const onBlur = (event) => {
+        if (event.currentTarget.contains?.(event.relatedTarget)) return
+        resume()
+      }
 
       const cardId = `strata-dock-card-${sessionId || 'none'}`
+      const line = (text, index, className = 'strata-dock-card-line') => h('span', { key: index, className }, text)
       return h(
         'span',
-        { className: 'strata-dock-wrap', 'data-state': state },
+        { className: 'strata-dock-wrap', 'data-state': state, onMouseEnter: pause, onMouseLeave: resume, onFocus: pause, onBlur },
         h(
           'button',
-          { type: 'button', className: 'strata-dock', title: hover.length ? undefined : title, 'aria-describedby': hover.length ? cardId : undefined, onClick: open, 'data-state': state },
+          { type: 'button', className: 'strata-dock', 'aria-label': full, 'aria-describedby': intro ? undefined : cardId, onClick: open, 'data-state': state, 'data-dwell': view.dwelling ? 'true' : undefined },
           h(StrataGlyph, { state, mode: play.mode, playKey: play.key }),
-          h('span', { className: 'strata-dock-text' }, label),
+          // Keyed by the text, so the swap back to the short status fades in (not under reduce-motion).
+          h('span', { key: label, className: 'strata-dock-text', 'aria-hidden': 'true' }, label),
         ),
-        hover.length && !intro
-          ? h('span', { id: cardId, role: 'tooltip', className: 'strata-dock-card' }, hover.map((line, index) => h('span', { key: index, className: 'strata-dock-card-line' }, line)))
+        h('span', { className: 'strata-sr', role: 'status', 'aria-live': 'polite' }, announce),
+        !intro
+          ? h(
+              'span',
+              { id: cardId, className: 'strata-dock-card' },
+              h('span', { className: 'strata-dock-card-title' }, t('cardTitle')),
+              h('span', { className: 'strata-dock-card-lead' }, full),
+              recent.length
+                ? h('span', { className: 'strata-dock-card-recent' }, recent.map((entry, index) => line(entry.text, index)))
+                : last
+                  ? line(last, 'last')
+                  : null,
+              hover.map((text, index) => line(text, index)),
+              h(
+                'span',
+                { className: 'strata-dock-card-foot' },
+                h('button', { type: 'button', className: 'strata-dock-link', onClick: open }, t('openSettings')),
+                h('span', null, t('more')),
+              ),
+            )
           : null,
         intro
           ? h(
@@ -399,10 +574,19 @@ window.__ModuleLoader__.load({
       .strata-glyph.is-success{color:#7dd3fc;filter:drop-shadow(0 0 2px color-mix(in srgb, #7dd3fc 65%, transparent))}
       .strata-glyph.is-error{color:var(--dsw-alias-state-error-primary)}
       .strata-glyph.is-off{color:var(--dsw-alias-label-tertiary)}
-      .strata-dock-text{overflow:hidden;text-overflow:ellipsis}
+      .strata-dock-text{overflow:hidden;text-overflow:ellipsis;animation:strata-fade .25s ease}
+      @keyframes strata-fade{from{opacity:.25}to{opacity:1}}
+      @media (prefers-reduced-motion: reduce){.strata-dock-text{animation:none}.strata-glyph{transition:none}}
+      .strata-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
       .strata-dock-wrap{position:relative;display:inline-flex;max-width:100%}
       .strata-dock-card,.strata-intro{position:absolute;left:0;bottom:calc(100% + 6px);z-index:60;box-sizing:border-box;width:max-content;min-width:240px;max-width:min(380px,90vw);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 6px 20px rgba(0,0,0,.14);padding:8px 10px;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary);white-space:normal;text-align:left}
-      .strata-dock-card{display:none;flex-direction:column;gap:2px;pointer-events:none}
+      .strata-dock-card{display:none;flex-direction:column;gap:2px}
+      .strata-dock-card::after{content:'';position:absolute;left:0;right:0;top:100%;height:8px}
+      .strata-dock-card-title{font-weight:600;color:var(--dsw-alias-label-primary)}
+      .strata-dock-card-lead{color:var(--dsw-alias-label-primary);margin-bottom:2px}
+      .strata-dock-card-recent{display:flex;flex-direction:column;gap:1px;padding:3px 0;margin:2px 0;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1)}
+      .strata-dock-card-foot{display:flex;align-items:center;gap:10px;margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px}
+      .strata-dock-link{border:0;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:underline}
       .strata-dock-wrap:hover .strata-dock-card,.strata-dock-wrap:focus-within .strata-dock-card{display:flex}
       .strata-intro{display:flex;align-items:flex-start;gap:10px;color:var(--dsw-alias-label-primary)}
       .strata-intro-text{cursor:pointer}
@@ -430,6 +614,7 @@ window.__ModuleLoader__.load({
       archiveDir: '',
       archiveMaxMB: 1024,
       archiveKeepDays: 0,
+      dockDetails: false,
     }
     const FIELDS = Object.keys(DEFAULTS)
     const NUMBERS = ['autoFoldPct', 'autoFoldForcePct', 'autoFoldTargetPct', 'protectedTailPct', 'archiveMaxMB', 'archiveKeepDays']
@@ -463,6 +648,8 @@ window.__ModuleLoader__.load({
       autoFoldHint: 'When reminders go unanswered, Strata digests the oldest work itself (restorable). Off: only the model’s own folds and DSH’s official summary. Applies immediately.',
       nudge: 'Remind the model to fold',
       nudgeHint: 'Adds a short note when there is a lot to fold. Off: folding is left to automatic digests, which then start at the auto-fold line without waiting; the compress tool stays available. STRATA_NUDGE=off also turns it off. Applies immediately.',
+      dockDetails: 'Show details in the status bar',
+      dockDetailsHint: 'On: the status bar always shows the full details. Off: it shows a short status, and a new notice stays for 8 seconds before moving into the hover card. Display only. Applies immediately.',
       archive: 'Archive',
       archiveDir: 'Location',
       archiveDirHint: 'Empty = <DSH home>/strata. Applies to new sessions; open sessions keep their folder.',
@@ -514,6 +701,8 @@ window.__ModuleLoader__.load({
       autoFoldHint: '提醒没有回应时，Strata 自己把最早的内容折成摘要（可还原）。关掉后只剩模型自己的折叠和 DSH 官方摘要。立即生效。',
       nudge: '提醒模型折叠',
       nudgeHint: '可折叠的内容多时给模型加一句提醒。关掉后只靠自动折叠，到自动折叠线就直接折叠、不等提醒；compress 工具仍可用。环境变量 STRATA_NUDGE=off 也能关掉。立即生效。',
+      dockDetails: '底部栏显示详情',
+      dockDetailsHint: '打开后底部栏一直显示完整详情；关闭时只显示简短状态，新提示会先停留 8 秒，再收进悬停时的浮窗。只影响显示。立即生效。',
       archive: '存档',
       archiveDir: '存档位置',
       archiveDirHint: '留空 = <DSH 主目录>/strata。对新会话生效；已打开的会话继续用原来的文件夹。',
@@ -693,6 +882,7 @@ window.__ModuleLoader__.load({
           h('h4', { className: 'strata-section-title' }, t('switches')),
           h(SToggle, { label: t('autoFold'), hint: t('autoFoldHint'), checked: draft.autoFold !== false, disabled: !writable, onChange: set('autoFold') }),
           h(SToggle, { label: t('nudge'), hint: t('nudgeHint'), checked: draft.nudge !== false, disabled: !writable, onChange: set('nudge') }),
+          h(SToggle, { label: t('dockDetails'), hint: t('dockDetailsHint'), checked: draft.dockDetails === true, disabled: !writable, onChange: set('dockDetails') }),
         ),
         h(
           'section',
@@ -795,6 +985,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, dockState, en, zh, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
+    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, eventSentence, kTokens, observe, pushRecent, startDwell, pauseDwell, resumeDwell, dwellActive, dockState, SHOW_MS, RECENT_MAX, en, zh, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
   },
 })
