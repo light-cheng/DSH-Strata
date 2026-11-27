@@ -2,7 +2,9 @@ import { createRequire } from "node:module";
 import { configConflicts, conflictMessage, installedConflicts } from "./lib/conflicts.js";
 import { registerGuiRoutes } from "./lib/gui-routes.js";
 import { createBudget } from "./lib/budget.js";
-import { setPageConfig, readSettings } from "./lib/settings.js";
+import { pageConfig, setPageConfig, readSettings } from "./lib/settings.js";
+import { checkSettingsReset, profileDirOf } from "./lib/reset.js";
+import { profileName } from "./lib/state.js";
 import { archiveRootFor, archiveTotals, endedArchives, purgeSessions } from "./lib/archive.js";
 
 // The settings page's Config. Loaded apart so a schemastery failure leaves
@@ -136,6 +138,19 @@ export default class StrataGate {
       } catch {}
     };
     publish();
+    // Settings reset by DSH's startup-failure dialog (lib/reset.js): fingerprint
+    // and hint only. The profile folder comes from DSH's profileContext; without
+    // one, detection is skipped.
+    const resetCheck = () => {
+      try {
+        let context;
+        try {
+          context = ctx.get?.("profileContext");
+        } catch {}
+        checkSettingsReset({ page: pageConfig(), profileDir: profileDirOf(context), profile: profileName(process.env, process.argv, context) });
+      } catch {}
+    };
+    resetCheck();
     let lastUpkeep = 0;
     const upkeep = () => {
       if (Date.now() - lastUpkeep < UPKEEP_MS) return;
@@ -150,6 +165,7 @@ export default class StrataGate {
     interval.unref?.();
     ctx.on?.("loader/volatile-update", () => {
       publish();
+      resetCheck();
       lastUpkeep = 0;
       upkeep();
     });

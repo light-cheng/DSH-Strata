@@ -6,6 +6,10 @@
 - `C:\Users\<you>\dsh-plugin-test` 是你的 Windows 测试文件夹，请换成你自己的实际路径，`<you>` 是你的 Windows 用户名。把这个文件夹作为本次验收的工作区打开。
 - 下文的 `<profile>` 是桌面版的 profile 名，一般是 `desktop`。
 
+> **启动失败对话框：** 遇到 DSH「启动失败」对话框，先选「重启」，不要选「禁用第三方插件、备份 profile patch 并重启」。选了后者，Strata 设置页的配置（`strata-gate` 块）会被清空，备份在 profile 目录的 `cordis.patch.yml.bak-<毫秒>`。
+> If DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder.
+> 测试中途点了后者，测试 profile 的设置就不再是你设过的值，后面的结果不可信：停下来，把情况发回来。
+
 > 这份清单已在 Mac 上用临时 DSH 主目录完整跑过一遍。标了「Windows 待核对」的地方，Mac 上测不到，请你留意一下实际结果。
 
 ---
