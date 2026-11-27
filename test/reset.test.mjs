@@ -40,11 +40,14 @@ function fresh() {
   resetResetMemory();
 }
 
-/** A backup file with a given mtime; the content is never read by Strata. */
-function backup(at, name = `${PATCH}.bak-${at}`) {
+// A rename keeps the patch's mtime, so a real backup's mtime is older than the record.
+const OLD = T0 - 30 * DAY;
+
+/** A backup named for time `at` (DSH's Date.now() at the rename), mtime `mtime`; the content is never read by Strata. */
+function backup(at, name = `${PATCH}.bak-${at}`, mtime = OLD) {
   const path = join(profileDir, name);
   writeFileSync(path, "- {id: strata-gate, config: {mode: quality}}\n");
-  utimesSync(path, new Date(at), new Date(at));
+  utimesSync(path, new Date(mtime), new Date(mtime));
   return path;
 }
 
@@ -104,6 +107,48 @@ test("condition 3 unmet: no backup, a backup older than the record, or another f
   backup(T0 + DAY, `other.yml.bak-${T0 + DAY}`);
   assert.equal(check({}, T0 + 2 * DAY).hint, null, "only cordis.patch.yml.bak-* counts");
   assert.equal(resetHint(), null);
+});
+
+test("backup time from the name: the real case (mtime before the record, name after) is detected", () => {
+  check({ mode: "quality" }, T0);
+  const bak = backup(T0 + DAY, undefined, T0 - DAY);
+  const state = check({}, T0 + 2 * DAY);
+  assert.equal(state.hint.bak, bak);
+  assert.equal(state.hint.bakStamp, T0 + DAY, "the time in the name, not the mtime");
+  assert.equal("bakMtime" in state.hint, false);
+});
+
+test("backup time from the name: a name before the record raises nothing, even with a later mtime", () => {
+  check({ mode: "quality" }, T0);
+  backup(T0 - DAY, undefined, T0 + DAY);
+  assert.equal(check({}, T0 + 2 * DAY).hint, null);
+  assert.equal(resetHint(), null);
+});
+
+test("backup names that do not match are skipped, whatever their mtime", () => {
+  check({ mode: "quality" }, T0);
+  const later = T0 + DAY;
+  backup(later, `${PATCH}.bak-abc`, later);
+  backup(later, `${PATCH}.bak-123`, later);
+  backup(later, `${PATCH}.bak-${later}.old`, later);
+  backup(later, `${PATCH}.bak-${later}0000`, later);
+  backup(later, `${PATCH}.bak-`, later);
+  mkdirSync(join(profileDir, `${PATCH}.bak-${later}x`));
+  mkdirSync(join(profileDir, `${PATCH}.bak-${later + 1}`), { recursive: true });
+  assert.equal(check({}, T0 + 2 * DAY).hint, null, "bad names and a folder with a good name");
+  assert.equal(resetHint(), null);
+});
+
+test("backup names with a number that is not a plausible Date.now() fall back to the mtime (as DSH-Mem0)", () => {
+  check({ mode: "quality" }, T0);
+  const seconds = String(Math.floor((T0 + DAY) / 1000));
+  assert.equal(seconds.length, 10);
+  backup(0, `${PATCH}.bak-${seconds}`, T0 - DAY);
+  assert.equal(check({}, T0 + 2 * DAY).hint, null, "10 digits, mtime before the record");
+  const bak = backup(0, `${PATCH}.bak-${seconds}0`, T0 + DAY);
+  const state = check({}, T0 + 2 * DAY);
+  assert.equal(state.hint.bak, bak, "11 digits, mtime after the record");
+  assert.equal(state.hint.bakStamp, T0 + DAY);
 });
 
 test("all three met: the hint names the newest backup, shows once in the dock, stays in /strata detail", () => {
