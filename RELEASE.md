@@ -4,6 +4,11 @@ English is the default; the Chinese version follows below.
 
 ## English
 
+### Unreleased
+
+- If the settings page's values are gone after DSH's crash recovery, Strata says so: `/strata detail` and, once, the status bar's hover card point at the `cordis.patch.yml.bak-*` backup. Strata only looks at the backup's file name (the time in it) and writes no profile file.
+- Desktop: If DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder.
+
 ### v0.5.0 — 2026-11-21
 
 0.5.0 makes Strata easier to set up and easier to read: a settings page instead of environment variables, a status line in plain words, and checks that keep Strata from tidying up when it would not pay.
@@ -119,6 +124,11 @@ Highlights:
 Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recovered facts from deleted files through the archive and landed a full T1 → T2 → T3 chain (design §11.10).
 
 ## 简体中文
+
+### 未发布
+
+- 设置页的值被 DSH 的崩溃恢复清空后，Strata 会提示：`/strata detail` 里有一节，底部栏悬浮窗显示一次，指向 `cordis.patch.yml.bak-*` 备份。Strata 只看备份的文件名（取其中的时间），不写任何 profile 文件。
+- 桌面版：遇到 DSH「启动失败」对话框，先选「重启」，不要选「禁用第三方插件、备份 profile patch 并重启」。选了后者，Strata 设置页的配置（`strata-gate` 块）会被清空，备份在 profile 目录的 `cordis.patch.yml.bak-<毫秒>`。
 
 ### v0.5.0 — 2026-11-21
 

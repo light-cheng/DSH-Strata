@@ -162,6 +162,11 @@ DSH 插件页里 Strata 分层上下文的详情下面有 **Strata 设置**（We
 - L1 卡片也是轮末切的。所以一个已经切成卡片的短任务再去折叠，回收很少，可能被代价估算推迟。这是有意的：长会话里一个折叠会覆盖很多张卡片。
 - 不支持 TUI 预设；fork 出来的会话暂时读不到父会话的存档。
 
+## 排错
+
+- **DSH「启动失败」对话框。** 遇到 DSH「启动失败」对话框，先选「重启」，不要选「禁用第三方插件、备份 profile patch 并重启」。选了后者，Strata 设置页的配置（`strata-gate` 块）会被清空，备份在 profile 目录的 `cordis.patch.yml.bak-<毫秒>`。之后可以在设置页重新设置，或从备份里把 `strata-gate` 块拷回 `cordis.patch.yml`。
+- **「Strata 的设置可能被 DSH 重置了」。** Strata 会记下你改过的设置项的名字（不记值）。这些项全部回到默认值，并且 profile 目录里有一个文件名中的时间晚于这份记录的 `cordis.patch.yml.bak-<毫秒>` 时，`/strata detail` 会显示这条提醒，底部栏的悬浮窗也会显示一次。Strata 不读备份文件，也不改任何文件；在设置页重新保存非默认值后，提醒消失。DSH 没有提供 profile 目录时，不做这项检查。
+
 ## 测试
 
 ```bash
@@ -176,7 +181,8 @@ npm run check
 
 - 原文写在 `<DSH_HOME>/strata/<会话>/`（默认 `~/.dsh/strata/`），目录权限 `0700`，文件 `0600`，默认总量上限 128 MB。
 - 所有内容都留在本机。Strata 自己不发网络请求，也不额外调用模型；折叠摘要由会话里的模型通过普通工具调用写出。
-- 浮标读取的是 DSH 自己 Web 服务上的 `GET /dsh-strata/gui/status?session=…`，经过和其他 DSH 接口相同的访问校验；只返回 token 数和事件类型，不含消息原文和存档路径。
+- 浮标读取的是 DSH 自己 Web 服务上的 `GET /dsh-strata/gui/status?session=…`，经过和其他 DSH 接口相同的访问校验；只返回 token 数和事件类型，不含消息原文和存档路径。唯一的例外是设置被重置的提醒（见「排错」），它会写出 profile 目录里 `cordis.patch.yml.bak-*` 的路径。
+- 设置重置检查会写 `<DSH_HOME>/strata/.state/settings-<profile>.json`：你改过的设置项的名字（不含值）、记录时间，以及发现重置后备份文件的路径和时间。
 - 过期的运行时上下文快照（比如 DSH-Mem0 召回的记忆）不会存档，只换成一行很短的占位，所以在 Mem0 里删掉的记忆不会在 Strata 存档里留副本。
 - 系统提示词从不存档：它每次请求都会重新生成，原位置只留一行 `[system prompt omitted]`，所以存档里不会有 DSH-Mem0 画像之类内容的副本。
 - 0.3.0 和 DSH-Mem0 一起用时写下的存档里可能还留着召回的记忆或 Mem0 画像。升级后第一次启动时，Strata 会清理一次：运行时上下文快照和 `<mem0-relevant-memories>` 块换成占位，`<mem0-user-profile>` 块和官方摘要存档里的系统提示词段落也一并替换，其他内容不变；存档根目录里的 `.scrub-runtime-context-v2` 标记保证只执行一次。

@@ -146,7 +146,8 @@
     "ruleOnNoNudge": "at turn end above {pct} (reminders are off, so no waiting for them); oldest work first, down to ~{target} (fixed overhead + {targetPct} of the room left)",
     "ruleGrowth": "; after one lands, the next waits until about {step} more can be folded, or usage passes {forced} (the force line, a fallback)",
     "scaleNote": " (converted at ×{scale})",
-    "scaleNoteRange": " (converted at ×{from}–×{to})"
+    "scaleNoteRange": " (converted at ×{from}–×{to})",
+    "reset": "Notice: settings may have been reset"
   },
   "purgeEnded": {
     "warning": "/strata purge ended deletes the local archives of ended sessions: {sessions} session(s), {mb} MB (not this session, sessions open in this process, or sessions another running DSH is writing). This cannot be undone: if you reopen those sessions, their folds and cards can no longer be restored from the archive (DSH's session log still holds the original events).",
@@ -267,7 +268,8 @@
     "lastNoneRestart": "Last: nothing tidied since DSH started; the conversation already has {folds} fold(s) and {cards} card(s).",
     "nextWaitNudge": "Next: past {pct}; after {left} more unanswered reminder(s), or at {force}, it tidies up at turn end",
     "nextWaitGrowth": "Next: just tidied; it tidies again at turn end once about {step} of new content builds up (about {sofar} so far), or usage reaches {forced} (the fallback line)",
-    "errorTimeout": "{time} {what} timed out (see /strata detail)"
+    "errorTimeout": "{time} {what} timed out (see /strata detail)",
+    "reset": "Strata's settings may have been reset by DSH (the startup-failure dialog's disable-plugins option). The backup is {bak}; set them again on the settings page, or copy the strata-gate block back from the backup."
   },
   "ids": {
     "range": "{first}–{last} ({n} folds)",

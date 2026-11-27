@@ -16,6 +16,7 @@ window.__ModuleLoader__.load({
     const PKG = '@lightcheng/dsh-strata'
     const STATUS_PATH = 'dsh-strata/gui/status'
     const INTRO_ACK_PATH = 'dsh-strata/gui/intro-ack'
+    const RESET_ACK_PATH = 'dsh-strata/gui/reset-ack'
     const POLL_MS = 2000
     /** An event older than this when first seen is shown as text only, without animation. */
     const FRESH_MS = 15000
@@ -225,6 +226,21 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** The hover card showed the settings-reset hint; the server stops sending it. True when recorded. */
+    async function ackReset() {
+      try {
+        const response = await fetch(new URL(RESET_ACK_PATH, document.baseURI).toString(), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: '{}',
+        })
+        return response.ok
+      } catch {
+        return false
+      }
+    }
+
     /** The active UI language id, sent with each poll so /strata answers in it. */
     function activeLanguage(ctx) {
       try {
@@ -414,6 +430,8 @@ window.__ModuleLoader__.load({
       // Shown once per mounted dock; acknowledged once it is on screen (retried on later polls if that failed).
       const introShown = useRef(false)
       const introAcked = useRef(false)
+      // The settings-reset hint is in the hover card once: acknowledged when the card is opened.
+      const resetAcked = useRef(false)
       const seen = useRef(null)
       const [, setTick] = useState(0)
 
@@ -433,6 +451,7 @@ window.__ModuleLoader__.load({
             if (!live) return
             setData(next)
             setMisses(0)
+            if (next?.plain?.resetHint !== true) resetAcked.current = false
             if (next?.intro?.text && !introShown.current) {
               introShown.current = true
               setIntro(next.intro)
@@ -513,6 +532,12 @@ window.__ModuleLoader__.load({
       const pause = () => {
         hovered.current = true
         setDwell((current) => pauseDwell(current, Date.now()))
+        if (data?.plain?.resetHint === true && !intro && !resetAcked.current) {
+          resetAcked.current = true
+          void ackReset().then((ok) => {
+            if (!ok) resetAcked.current = false
+          })
+        }
       }
       const resume = () => {
         hovered.current = false

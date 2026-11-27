@@ -8,6 +8,8 @@ import { setUiLanguage } from "../lib/command.js";
 
 const root = mkdtempSync(join(tmpdir(), "strata-fallback-"));
 process.env.STRATA_SHADOW_DIR = root;
+// The gate writes its settings fingerprint under DSH_HOME (lib/reset.js): keep it in the temp root.
+process.env.DSH_HOME = join(root, "home");
 const { default: Entry } = await import("../shell.js");
 const { default: Engine } = await import("../index.js");
 const { BasicCompactionEngine } = await import("@deepseek-ai/dsh-compaction-basic");

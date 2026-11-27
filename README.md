@@ -162,6 +162,11 @@ The engine row's compaction thresholds (`thresholdRatio` 0.8, `headroomTokens` 6
 - L1 cards are cut at turn end too, so a fold over a short, already-carded task reclaims little and may be deferred by the cost check. That is intended: in long sessions one fold covers many cards.
 - The TUI preset is not supported; forked sessions cannot read the parent session's archive yet.
 
+## Troubleshooting
+
+- **DSH "startup failed" dialog.** If DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder. You can set the values again on the settings page, or copy the `strata-gate` block back from the backup into `cordis.patch.yml`.
+- **"Strata's settings may have been reset by DSH".** Strata keeps the names (not the values) of the settings you changed. When all of them are back at their defaults and the profile folder holds a `cordis.patch.yml.bak-<ms>` whose name carries a later time than that record, `/strata detail` shows this notice, and the status bar's hover card shows it once. Strata does not read the backup or change any file; saving a non-default value on the settings page clears the notice. Without a profile folder from DSH the check is skipped.
+
 ## Tests
 
 ```bash
@@ -176,7 +181,8 @@ npm run check
 
 - Originals are written to `<DSH_HOME>/strata/<session>/` (default `~/.dsh/strata/`), directories `0700`, files `0600`, 128 MB in total by default.
 - Everything stays on this machine. Strata makes no network requests and no extra model calls of its own; folds are written by the session's own model as ordinary tool calls.
-- The dock reads `GET /dsh-strata/gui/status?session=…` on DSH's own Web server, behind the same access check as every DSH route. It returns token counts, event kinds and the dock's plain text only, never message text or archive paths.
+- The dock reads `GET /dsh-strata/gui/status?session=…` on DSH's own Web server, behind the same access check as every DSH route. It returns token counts, event kinds and the dock's plain text only, never message text or archive paths. The one exception is the settings-reset notice (see Troubleshooting), which names the profile's `cordis.patch.yml.bak-*` file.
+- The settings-reset check keeps `<DSH_HOME>/strata/.state/settings-<profile>.json`: the names of the settings-page fields you changed (no values), when that was recorded, and the backup file's path and time once a reset is seen.
 - Superseded runtime-context snapshots (for example DSH-Mem0's recalled memories) are never archived; they are replaced by a short placeholder, so deleting a memory in Mem0 leaves no copy in Strata's archive.
 - System prompts are never archived; they are rebuilt on every request, and a one-line `[system prompt omitted]` marks their place, so the archive keeps no copy of, for example, DSH-Mem0's profile.
 - Archives written by 0.3.0 next to DSH-Mem0 may still hold recalled memories or the Mem0 profile. On the first start after upgrading, Strata scrubs them once: runtime-context snapshots and `<mem0-relevant-memories>` blocks become the placeholder, `<mem0-user-profile>` blocks and system-prompt sections of official-summary archives are replaced too, everything else stays as it was, and a `.scrub-runtime-context-v2` marker in the archive root keeps it from running again.
