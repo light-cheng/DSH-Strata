@@ -165,7 +165,7 @@ The engine row's compaction thresholds (`thresholdRatio` 0.8, `headroomTokens` 6
 ## Troubleshooting
 
 - **DSH "startup failed" dialog.** If DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder. You can set the values again on the settings page, or copy the `strata-gate` block back from the backup into `cordis.patch.yml`.
-- **"Strata's settings may have been reset by DSH".** Strata keeps the names (not the values) of the settings you changed. When all of them are back at their defaults and the profile folder holds a `cordis.patch.yml.bak-*` newer than that record, `/strata detail` shows this notice, and the status bar's hover card shows it once. Strata does not read the backup or change any file; saving a non-default value on the settings page clears the notice. Without a profile folder from DSH the check is skipped.
+- **"Strata's settings may have been reset by DSH".** Strata keeps the names (not the values) of the settings you changed. When all of them are back at their defaults and the profile folder holds a `cordis.patch.yml.bak-<ms>` whose name carries a later time than that record, `/strata detail` shows this notice, and the status bar's hover card shows it once. Strata does not read the backup or change any file; saving a non-default value on the settings page clears the notice. Without a profile folder from DSH the check is skipped.
 
 ## Tests
 

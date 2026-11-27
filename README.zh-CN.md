@@ -165,7 +165,7 @@ DSH 插件页里 Strata 分层上下文的详情下面有 **Strata 设置**（We
 ## 排错
 
 - **DSH「启动失败」对话框。** 遇到 DSH「启动失败」对话框，先选「重启」，不要选「禁用第三方插件、备份 profile patch 并重启」。选了后者，Strata 设置页的配置（`strata-gate` 块）会被清空，备份在 profile 目录的 `cordis.patch.yml.bak-<毫秒>`。之后可以在设置页重新设置，或从备份里把 `strata-gate` 块拷回 `cordis.patch.yml`。
-- **「Strata 的设置可能被 DSH 重置了」。** Strata 会记下你改过的设置项的名字（不记值）。这些项全部回到默认值，并且 profile 目录里有一个比这份记录更新的 `cordis.patch.yml.bak-*` 时，`/strata detail` 会显示这条提醒，底部栏的悬浮窗也会显示一次。Strata 不读备份文件，也不改任何文件；在设置页重新保存非默认值后，提醒消失。DSH 没有提供 profile 目录时，不做这项检查。
+- **「Strata 的设置可能被 DSH 重置了」。** Strata 会记下你改过的设置项的名字（不记值）。这些项全部回到默认值，并且 profile 目录里有一个文件名中的时间晚于这份记录的 `cordis.patch.yml.bak-<毫秒>` 时，`/strata detail` 会显示这条提醒，底部栏的悬浮窗也会显示一次。Strata 不读备份文件，也不改任何文件；在设置页重新保存非默认值后，提醒消失。DSH 没有提供 profile 目录时，不做这项检查。
 
 ## 测试
 
