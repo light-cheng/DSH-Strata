@@ -217,7 +217,7 @@ export default class StrataGate {
       version = require("./package.json").version;
     } catch {}
     // Read-only diagnosis status for another plugin's diagnosis session
-    // (lib/diagnosis.js): statusBlock({ lang }) returns the block or null, never throws.
+    // (lib/diagnosis.js): statusBlock({ lang, sessionId }) returns the block or null, never throws.
     try {
       ctx.provide(DIAGNOSIS_SERVICE, createDiagnosisService({ version }));
     } catch {}

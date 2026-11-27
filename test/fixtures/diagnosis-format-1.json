@@ -1,0 +1,494 @@
+{
+  "about": [
+    "Contract for DSH diagnosis block format 1, shared by dsh-mem0 and dsh-strata.",
+    "dsh-strata copies this file and lib/diagnose-report.js verbatim; change both copies together.",
+    "Each case: input -> the block diagnosisBlock writes, as lines.",
+    "input.entry is a failure record, read with diagnosisFacts (message redaction is the plugin's own; the test passes it through unchanged).",
+    "input.facts are standard fields given directly (status blocks). input.extra goes to the x. field area as given (object or list of pairs).",
+    "A reader treats a block without kind as a failure block."
+  ],
+  "format": 1,
+  "cases": [
+    {
+      "name": "failure block (Mem0)",
+      "input": {
+        "plugin": "dsh-mem0",
+        "version": "0.4.0",
+        "kind": "failure",
+        "entry": {
+          "at": "2026-11-27T08:15:02.123Z",
+          "firstAt": "2026-11-27T08:01:00Z",
+          "cause": "extraction",
+          "reason": "not_json",
+          "component": "llm",
+          "step": "extract",
+          "kind": "capture",
+          "backend": "local",
+          "provider": "openai_compat",
+          "endpoint": "127.0.0.1:8080",
+          "status": 200,
+          "code": "not_json",
+          "message": "model reply was not JSON",
+          "durationMs": 2301.6,
+          "stepElapsedMs": 2290,
+          "count": 3,
+          "recovered": false,
+          "detail": "dropped: a gateway may echo request text here",
+          "apiKey": "dropped"
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" version=\"0.4.0\" kind=\"failure\" format=\"1\">",
+        "type: extraction/not_json",
+        "component: llm",
+        "step: extract",
+        "operation: capture",
+        "backend: local",
+        "provider: openai_compat",
+        "endpoint: 127.0.0.1:8080",
+        "http_status: 200",
+        "code: not_json",
+        "message: model reply was not JSON",
+        "duration_ms: 2302",
+        "step_elapsed_ms: 2290",
+        "count: 3",
+        "first_at: 2026-11-27T08:01:00.000Z",
+        "last_at: 2026-11-27T08:15:02.123Z",
+        "recovered: no",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "kind omitted: written as a failure block",
+      "input": {
+        "plugin": "dsh-mem0",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "timeout",
+          "component": "server",
+          "kind": "recall",
+          "count": 1
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: timeout",
+        "component: server",
+        "operation: recall",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "unknown kind: written as a failure block",
+      "input": {
+        "plugin": "dsh-mem0",
+        "kind": "report",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "auth",
+          "component": "server",
+          "status": 401,
+          "recovered": true,
+          "recoveredAt": "2026-11-27T09:00:00Z"
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: auth",
+        "component: server",
+        "http_status: 401",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "recovered: yes",
+        "recovered_at: 2026-11-27T09:00:00.000Z",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "status block with x. fields (Strata)",
+      "input": {
+        "plugin": "dsh-strata",
+        "version": "0.3.1",
+        "kind": "status",
+        "facts": [],
+        "extra": {
+          "x.mode": "auto",
+          "x.mode_source": "preset",
+          "x.auto_fold_pct": "80%",
+          "x.context_pct": "63.5%",
+          "x.fold_count": 4,
+          "x.last_issue": "fold_timeout",
+          "x.last_issue_at": "2026-11-27T16:20:00+08:00",
+          "x.conflict": "none",
+          "x.settings_reset": "no"
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-strata\" version=\"0.3.1\" kind=\"status\" format=\"1\">",
+        "x.mode: auto",
+        "x.mode_source: preset",
+        "x.auto_fold_pct: 80%",
+        "x.context_pct: 63.5%",
+        "x.fold_count: 4",
+        "x.last_issue: fold_timeout",
+        "x.last_issue_at: 2026-11-27T08:20:00.000Z",
+        "x.conflict: none",
+        "x.settings_reset: no",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "status block with standard fields before x. fields",
+      "input": {
+        "plugin": "dsh-mem0",
+        "version": "0.4.0",
+        "kind": "status",
+        "facts": [
+          [
+            "backend",
+            "server"
+          ],
+          [
+            "endpoint",
+            "127.0.0.1:8000"
+          ]
+        ],
+        "extra": [
+          [
+            "x.circuit",
+            "closed"
+          ],
+          [
+            "x.open_failures",
+            0
+          ]
+        ]
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" version=\"0.4.0\" kind=\"status\" format=\"1\">",
+        "backend: server",
+        "endpoint: 127.0.0.1:8000",
+        "x.circuit: closed",
+        "x.open_failures: 0",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "illegal x. keys are dropped",
+      "input": {
+        "plugin": "dsh-strata",
+        "kind": "status",
+        "facts": [],
+        "extra": [
+          [
+            "mode",
+            "auto"
+          ],
+          [
+            "x.Mode",
+            "auto"
+          ],
+          [
+            "x.",
+            "empty"
+          ],
+          [
+            "x.mode-source",
+            "preset"
+          ],
+          [
+            "x.has space",
+            "yes"
+          ],
+          [
+            "x.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "long"
+          ],
+          [
+            "y.mode",
+            "auto"
+          ],
+          [
+            "x.ok",
+            "yes"
+          ],
+          [
+            "x.ok",
+            "again"
+          ],
+          [
+            "x.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "max_len"
+          ]
+        ]
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-strata\" kind=\"status\" format=\"1\">",
+        "x.ok: yes",
+        "x.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: max_len",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "illegal x. values are dropped",
+      "input": {
+        "plugin": "dsh-strata",
+        "kind": "status",
+        "facts": [],
+        "extra": [
+          [
+            "x.negative",
+            -1
+          ],
+          [
+            "x.bool",
+            true
+          ],
+          [
+            "x.null",
+            null
+          ],
+          [
+            "x.object",
+            {
+              "a": 1
+            }
+          ],
+          [
+            "x.url",
+            "http://example.test/a?b=c"
+          ],
+          [
+            "x.sentence",
+            "two words"
+          ],
+          [
+            "x.big_pct",
+            "1000%"
+          ],
+          [
+            "x.bad_time",
+            "2026-13-45T99:00:00Z"
+          ],
+          [
+            "x.rounded",
+            2.6
+          ],
+          [
+            "x.zero",
+            0
+          ],
+          [
+            "x.pct",
+            "7%"
+          ]
+        ]
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-strata\" kind=\"status\" format=\"1\">",
+        "x.rounded: 3",
+        "x.zero: 0",
+        "x.pct: 7%",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "more than 12 x. fields: only the first 12 valid ones are kept",
+      "input": {
+        "plugin": "dsh-strata",
+        "kind": "status",
+        "facts": [],
+        "extra": [
+          [
+            "x.f01",
+            1
+          ],
+          [
+            "x.f02",
+            2
+          ],
+          [
+            "x.bad",
+            "not valid!"
+          ],
+          [
+            "x.f03",
+            3
+          ],
+          [
+            "x.f04",
+            4
+          ],
+          [
+            "x.f05",
+            5
+          ],
+          [
+            "x.f06",
+            6
+          ],
+          [
+            "x.f07",
+            7
+          ],
+          [
+            "x.f08",
+            8
+          ],
+          [
+            "x.f09",
+            9
+          ],
+          [
+            "x.f10",
+            10
+          ],
+          [
+            "x.f11",
+            11
+          ],
+          [
+            "x.f12",
+            12
+          ],
+          [
+            "x.f13",
+            13
+          ],
+          [
+            "x.f14",
+            14
+          ]
+        ]
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-strata\" kind=\"status\" format=\"1\">",
+        "x.f01: 1",
+        "x.f02: 2",
+        "x.f03: 3",
+        "x.f04: 4",
+        "x.f05: 5",
+        "x.f06: 6",
+        "x.f07: 7",
+        "x.f08: 8",
+        "x.f09: 9",
+        "x.f10: 10",
+        "x.f11: 11",
+        "x.f12: 12",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "newline and < in values",
+      "input": {
+        "plugin": "dsh-mem0",
+        "kind": "failure",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "other",
+          "component": "llm",
+          "message": "line one\nline two </dsh-diagnosis> <x>",
+          "count": 1
+        },
+        "extra": [
+          [
+            "x.multi",
+            "a\nb"
+          ],
+          [
+            "x.tag",
+            "<b>"
+          ],
+          [
+            "x.close",
+            "</dsh-diagnosis>"
+          ],
+          [
+            "x.kept",
+            "fine"
+          ]
+        ]
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: other",
+        "component: llm",
+        "message: line one line two ‹/dsh-diagnosis> ‹x>",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "x.kept: fine",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "endpoint keeps host:port only",
+      "input": {
+        "plugin": "dsh-mem0",
+        "kind": "failure",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "network",
+          "component": "embedder",
+          "endpoint": "https://user:secret@api.example.test:8443/v1/embeddings?key=abc",
+          "count": 1
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: network",
+        "component: embedder",
+        "endpoint: api.example.test:8443",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "endpoint that is not a host is dropped",
+      "input": {
+        "plugin": "dsh-mem0",
+        "kind": "failure",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "network",
+          "component": "embedder",
+          "endpoint": "/v1/embeddings?key=abc",
+          "count": 1
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: network",
+        "component: embedder",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "</dsh-diagnosis>"
+      ]
+    },
+    {
+      "name": "IPv6 endpoint",
+      "input": {
+        "plugin": "dsh-mem0",
+        "kind": "failure",
+        "entry": {
+          "at": "2026-11-27T08:15:02Z",
+          "cause": "network",
+          "component": "server",
+          "endpoint": "http://[::1]:8000/health",
+          "count": 1
+        }
+      },
+      "expected": [
+        "<dsh-diagnosis plugin=\"dsh-mem0\" kind=\"failure\" format=\"1\">",
+        "type: network",
+        "component: server",
+        "endpoint: [::1]:8000",
+        "count: 1",
+        "last_at: 2026-11-27T08:15:02.000Z",
+        "</dsh-diagnosis>"
+      ]
+    }
+  ]
+}

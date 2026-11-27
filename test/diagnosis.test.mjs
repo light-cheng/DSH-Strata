@@ -1,6 +1,7 @@
-// Diagnosis status block (lib/diagnosis.js, part 1, format pending): the nine
-// x. facts, the value whitelist, the header, the dshDiagnosisStrata service
-// (null on any error) and the /strata detail section. No path and no
+// Diagnosis status block (lib/diagnosis.js, format 1 via the copied
+// lib/diagnose-report.js): the nine x. facts, the standard last_at field, the
+// value rules, the header, the dshDiagnosisStrata service (sessionId optional,
+// null on any error) and the /strata detail section. No path and no
 // conversation text may reach the block. Temp DSH_HOME and archive.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +16,8 @@ process.env.STRATA_SHADOW_DIR = join(root, "archive");
 delete process.env.DSH_PROFILE_DIR;
 delete process.env.STRATA_PRESET;
 
-const { cleanValue, conflictWord, createDiagnosisService, DIAGNOSIS_SERVICE, MAX_X_FIELDS, noteConfigConflicts, renderStatusBlock, statusFacts } = await import("../lib/diagnosis.js");
+const { conflictWord, createDiagnosisService, DIAGNOSIS_SERVICE, noteConfigConflicts, renderStatusBlock, standardFacts, statusFacts } = await import("../lib/diagnosis.js");
+const { DIAGNOSIS_EXTRA_MAX, diagnosisExtra } = await import("../lib/diagnose-report.js");
 const { latestActivitySession, recordActivityError, recordActivityRejection, recordUsage, resetActivity } = await import("../lib/activity.js");
 const { recordLedger, resetLedger } = await import("../lib/ledger.js");
 const { checkSettingsReset, resetResetMemory } = await import("../lib/reset.js");
@@ -94,14 +96,19 @@ test("latestActivitySession: the session written last", () => {
   assert.equal(latestActivitySession(), "a");
 });
 
-test("cleanValue: words, numbers, ISO times and percentages pass; sentences, paths and long values are dropped", () => {
-  for (const ok of ["cost", "fold_failed", "dsh-live-compact", "light-cheng.dsh-strata", 3, "0", "42.5%", "2026-11-27T10:00:00.000Z"]) assert.equal(cleanValue(ok), String(ok));
-  for (const bad of ["two words", SECRET_PATH, "C:\\Users\\x", "a/b", "x".repeat(41), "", null, undefined, Number.NaN, { a: 1 }, ["a"], "line\nbreak", "key: value"]) {
-    assert.equal(cleanValue(bad), null, String(bad));
+const HEADER = (version) => `<dsh-diagnosis plugin="dsh-strata" version="${version}" kind="status" format="1">`;
+
+test("values: words, counts, ISO times and percentages pass; sentences, paths, long values, booleans and negatives are dropped", () => {
+  for (const ok of ["cost", "fold_failed", "dsh-live-compact", "light-cheng.dsh-strata", 3, 0, "42.5%", "2026-11-27T10:00:00.000Z"]) {
+    assert.deepEqual(diagnosisExtra({ "x.v": ok }), [["x.v", ok]], String(ok));
+  }
+  assert.deepEqual(diagnosisExtra({ "x.v": 2.6 }), [["x.v", 3]], "a number is a count: rounded");
+  for (const bad of ["two words", SECRET_PATH, "C:\\Users\\x", "a/b", "x".repeat(41), "", null, undefined, Number.NaN, -1, true, false, { a: 1 }, ["a"], "line\nbreak", "key: value"]) {
+    assert.deepEqual(diagnosisExtra({ "x.v": bad }), [], String(bad));
   }
 });
 
-test("renderStatusBlock: header, one key per line, footer; bad keys and values dropped whole; at most 12 fields", () => {
+test("renderStatusBlock: header, one key per line, footer; bad keys and values dropped whole; at most 12 x. fields", () => {
   const block = renderStatusBlock({
     "x.mode": "cost",
     "x.bad": SECRET_TEXT,
@@ -112,12 +119,31 @@ test("renderStatusBlock: header, one key per line, footer; bad keys and values d
     "x.Bad-Key": "cost",
     "x.fold_count": 3,
   }, { version: "0.5.0" });
-  assert.equal(block, '<dsh-diagnosis plugin="dsh-strata" format="1" kind="status" version="0.5.0">\nx.mode: cost\nx.fold_count: 3\n</dsh-diagnosis>');
+  assert.equal(block, `${HEADER("0.5.0")}\nx.mode: cost\nx.fold_count: 3\n</dsh-diagnosis>`);
   assert.equal(renderStatusBlock({ "x.bad": "a sentence here" }, { version: "1" }), "", "nothing left: empty");
-  assert.match(renderStatusBlock({ "x.a": "b" }, { version: '1"><x' }), /^<dsh-diagnosis plugin="dsh-strata" format="1" kind="status" version="1x">$/m);
+  assert.match(renderStatusBlock({ "x.a": "b" }, { version: '1"><x' }), /^<dsh-diagnosis plugin="dsh-strata" version="1x" kind="status" format="1">$/m);
+  assert.match(renderStatusBlock({ "x.a": "b" }), /^<dsh-diagnosis plugin="dsh-strata" kind="status" format="1">$/m, "no version, no attribute");
 
   const many = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`x.f${i}`, i]));
-  assert.equal(renderStatusBlock(many).split("\n").length - 2, MAX_X_FIELDS);
+  assert.equal(renderStatusBlock(many).split("\n").length - 2, DIAGNOSIS_EXTRA_MAX);
+});
+
+test("standard fields: last_at (the last issue's time) comes first; nothing else from the standard list", () => {
+  const id = busySession("diag-std");
+  const facts = statusFacts({ sessionId: id, conflicts: [], reset: null });
+  assert.deepEqual(standardFacts(facts), [["last_at", facts["x.last_issue_at"]]]);
+  const lines = renderStatusBlock(facts, { version: "0.5.0" }).split("\n");
+  assert.equal(lines[1], `last_at: ${facts["x.last_issue_at"]}`);
+  assert.ok(lines.slice(2, -1).every((line) => line.startsWith("x.")), "x. fields after the standard ones");
+  const keys = lines.slice(1, -1).map((line) => line.slice(0, line.indexOf(":")));
+  assert.deepEqual(keys.filter((key) => !key.startsWith("x.")), ["last_at"]);
+
+  recordUsage("diag-calm", { totalTokens: 1, window: 10 });
+  const calm = statusFacts({ sessionId: "diag-calm", conflicts: [], reset: null });
+  assert.deepEqual(standardFacts(calm), [], "no issue, no last_at");
+  assert.doesNotMatch(renderStatusBlock(calm), /\nlast_at:/);
+  assert.deepEqual(standardFacts({ "x.last_issue_at": "2026-11-27T16:20:00+08:00" }), [["last_at", "2026-11-27T08:20:00.000Z"]], "normalised to UTC");
+  for (const bad of [SECRET_PATH, "2026-13-45T99:00:00Z", "yesterday", 1764201600000, null]) assert.deepEqual(standardFacts({ "x.last_issue_at": bad }), [], String(bad));
 });
 
 test("no path and no conversation text reaches the block, from a rejection, a failure or the .bak", () => {
@@ -130,20 +156,56 @@ test("no path and no conversation text reaches the block, from a rejection, a fa
   assert.equal(block.includes("payment"), false);
   assert.equal(block.includes("bak"), false);
   assert.equal(block.includes("f2") || block.includes("c2"), false, "no ids");
-  for (const line of block.split("\n").slice(1, -1)) assert.match(line, /^x\.[a-z0-9_]{1,32}: [A-Za-z0-9_.:%-]+$/);
+  for (const line of block.split("\n").slice(1, -1)) assert.match(line, /^(?:last_at|x\.[a-z0-9_]{1,32}): [A-Za-z0-9_.:%-]+$/);
 });
 
 test("service: statusBlock returns the block; any error gives null, never a throw", async () => {
   busySession("diag-svc");
   const service = createDiagnosisService({ version: pkg.version });
   const block = service.statusBlock({ lang: "zh" });
-  assert.match(block, new RegExp(`^<dsh-diagnosis plugin="dsh-strata" format="1" kind="status" version="${pkg.version.replace(/\./g, "\\.")}">\\n`));
+  assert.ok(block.startsWith(`${HEADER(pkg.version)}\n`));
   assert.match(block, /\nx\.fold_count: 2\n/, "latest session");
   assert.match(block, /\n<\/dsh-diagnosis>$/);
 
   const broken = createDiagnosisService({ collect: () => { throw new Error("boom"); } });
   assert.equal(broken.statusBlock({ lang: "en" }), null);
   assert.equal(createDiagnosisService({ collect: () => ({}) }).statusBlock(), null, "nothing to report");
+});
+
+test("service: sessionId picks that session; a session with no data gets no session fields", () => {
+  busySession("diag-a");
+  recordUsage("diag-b", { totalTokens: 100, window: 1000 });
+  const service = createDiagnosisService({ version: pkg.version });
+  const SESSION = ["x.context_pct", "x.fold_count", "x.last_issue", "x.last_issue_at"];
+  const keysOf = (block) => block.split("\n").slice(1, -1).map((line) => line.slice(0, line.indexOf(":")));
+
+  // Without sessionId: the session written last (diag-b, quiet).
+  const latest = service.statusBlock({ lang: "en" });
+  assert.match(latest, /\nx\.context_pct: 10%\n/);
+  assert.match(latest, /\nx\.fold_count: 0\n/);
+  assert.match(latest, /\nx\.last_issue: none\n/);
+  assert.doesNotMatch(latest, /\nlast_at:/);
+
+  // With sessionId: that session, even though another was written later.
+  const picked = service.statusBlock({ lang: "zh", sessionId: "diag-a" });
+  assert.match(picked, /\nx\.context_pct: 42%\n/);
+  assert.match(picked, /\nx\.fold_count: 2\n/);
+  assert.match(picked, /\nx\.last_issue: fold_failed\n/);
+  assert.match(picked, /\nlast_at: \d{4}-/);
+
+  // A session this process never saw: no session fields, no last_at, the rest stays.
+  const unknown = service.statusBlock({ lang: "en", sessionId: "never-seen" });
+  const keys = keysOf(unknown);
+  for (const key of [...SESSION, "last_at"]) assert.equal(keys.includes(key), false, key);
+  assert.deepEqual(keys, ["x.mode", "x.mode_source", "x.auto_fold_pct", "x.conflict", "x.settings_reset"]);
+
+  // A session known only through the ledger still counts as having data.
+  recordLedger("diag-ledger", { layer: "L2", id: "f9", tokensFromStart: 10, reclaimed: 5 }, 1);
+  assert.match(service.statusBlock({ sessionId: "diag-ledger" }), /\nx\.fold_count: 1\n/);
+
+  // An empty sessionId is the same as none.
+  assert.equal(service.statusBlock({ sessionId: "" }), service.statusBlock({}));
+  assert.equal(typeof service.statusBlock(), "string", "no options at all");
 });
 
 test("gate provides dshDiagnosisStrata; a failing provide does not break the gate", () => {
@@ -179,7 +241,7 @@ test("/strata detail ends with the diagnostic section (zh and en), for this sess
   const zh = runCommand(engine.strataLayer, agent, "detail", { language: "zh" }).text;
   const section = zh.slice(zh.indexOf("7. 诊断信息（可复制）"));
   assert.ok(zh.indexOf("7. 诊断信息（可复制）") > zh.indexOf("6. 最近的上下文变化"));
-  assert.match(section, /^7\. 诊断信息（可复制）\n```\n<dsh-diagnosis plugin="dsh-strata" format="1" kind="status" version="[^"]+">\n[\s\S]*\n<\/dsh-diagnosis>\n```$/);
+  assert.match(section, /^7\. 诊断信息（可复制）\n```\n<dsh-diagnosis plugin="dsh-strata" version="[^"]+" kind="status" format="1">\n[\s\S]*\n<\/dsh-diagnosis>\n```$/);
   assert.match(section, /\nx\.last_issue: rejected\n/, "this session, not the latest one");
   assert.equal(section.includes("/Users"), false);
   assert.equal(section.includes("payment"), false);
