@@ -139,16 +139,17 @@ test("backup names that do not match are skipped, whatever their mtime", () => {
   assert.equal(resetHint(), null);
 });
 
-test("backup names with a number that is not a plausible Date.now() fall back to the mtime (as DSH-Mem0)", () => {
+test("backup names with a number that is not 13 digits are skipped, whatever their mtime", () => {
   check({ mode: "quality" }, T0);
   const seconds = String(Math.floor((T0 + DAY) / 1000));
   assert.equal(seconds.length, 10);
   backup(0, `${PATCH}.bak-${seconds}`, T0 - DAY);
-  assert.equal(check({}, T0 + 2 * DAY).hint, null, "10 digits, mtime before the record");
-  const bak = backup(0, `${PATCH}.bak-${seconds}0`, T0 + DAY);
-  const state = check({}, T0 + 2 * DAY);
-  assert.equal(state.hint.bak, bak, "11 digits, mtime after the record");
-  assert.equal(state.hint.bakStamp, T0 + DAY);
+  backup(0, `${PATCH}.bak-${seconds}0`, T0 - DAY);
+  assert.equal(check({}, T0 + 2 * DAY).hint, null, "10 and 11 digits, mtime before the record");
+  backup(0, `${PATCH}.bak-${seconds}`, T0 + DAY);
+  backup(0, `${PATCH}.bak-${seconds}0`, T0 + DAY);
+  assert.equal(check({}, T0 + 2 * DAY).hint, null, "10 and 11 digits, mtime after the record");
+  assert.equal(resetHint(), null);
 });
 
 test("all three met: the hint names the newest backup, shows once in the dock, stays in /strata detail", () => {
