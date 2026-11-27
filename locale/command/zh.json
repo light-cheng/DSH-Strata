@@ -146,7 +146,8 @@
     "ruleOnNoNudge": "轮末超过 {pct} 时（提醒模型折叠已关，不等提醒），从最早的内容开始折叠，直到约 {target}（固定开销 + 剩余空间的 {targetPct}）",
     "ruleGrowth": "；整理过一次后，要等可折叠内容再增长约 {step}，或占用超过 {forced}（强制线，兜底），才再整理",
     "scaleNote": "（按 ×{scale} 换算）",
-    "scaleNoteRange": "（按 ×{from}–×{to} 换算）"
+    "scaleNoteRange": "（按 ×{from}–×{to} 换算）",
+    "reset": "提醒：设置可能被重置"
   },
   "purgeEnded": {
     "warning": "/strata purge ended 会删除已结束会话的本地存档：{sessions} 个会话，{mb} MB（不含本会话、本进程里打开的会话和另一个仍在运行的 DSH 正在写的会话），且无法撤销。之后再打开这些会话，它们的折叠和卡片原文无法从存档还原（DSH 会话日志里仍有原始事件）。",
@@ -267,7 +268,8 @@
     "lastNoneRestart": "最近：本次启动后还没有整理；对话里已有 {folds} 个折叠、{cards} 张卡片。",
     "nextWaitNudge": "下次：已过 {pct}，再有 {left} 次提醒没回应，或涨到 {force}，就在轮末整理",
     "nextWaitGrowth": "下次：刚整理过，要等新内容再积累约 {step}（目前约 {sofar}），或占用涨到 {forced}（兜底线），才会在轮末再整理",
-    "errorTimeout": "{time} {what}超时没完成（原因见 /strata detail）"
+    "errorTimeout": "{time} {what}超时没完成（原因见 /strata detail）",
+    "reset": "Strata 的设置可能被 DSH 重置了（启动失败对话框选了禁用插件）。备份在 {bak}，可以在设置页重新设置，或从备份里把 strata-gate 块拷回去。"
   },
   "ids": {
     "range": "{first}–{last}（{n} 段）",

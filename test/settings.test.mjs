@@ -6,6 +6,10 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, existsSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// The gate writes its settings fingerprint under DSH_HOME (lib/reset.js): keep it out of the real one.
+const home = mkdtempSync(join(tmpdir(), "strata-settings-home-"));
+process.env.DSH_HOME = home;
+process.on("exit", () => rmSync(home, { recursive: true, force: true }));
 const { readSettings, setPageConfig, pageConfig, liveSettings, foldLines, officialLine, PRESETS, PAGE_DEFAULTS } = await import("../lib/settings.js");
 const { Config } = await import("../lib/config.js");
 const { localizeOutcome, translator } = await import("../lib/command.js");
