@@ -6,6 +6,7 @@ import { pageConfig, setPageConfig, readSettings } from "./lib/settings.js";
 import { checkSettingsReset, profileDirOf } from "./lib/reset.js";
 import { profileName } from "./lib/state.js";
 import { archiveRootFor, archiveTotals, endedArchives, purgeSessions } from "./lib/archive.js";
+import { createDiagnosisService, DIAGNOSIS_SERVICE, noteConfigConflicts } from "./lib/diagnosis.js";
 
 // The settings page's Config. Loaded apart so a schemastery failure leaves
 // the gate (and every preset's engine) working with built-in defaults.
@@ -181,7 +182,9 @@ export default class StrataGate {
       try {
         // §6: with dsh-live-compact or billion-context present, leave presets alone.
         if (isPreset(resolved)) {
-          const conflicts = [...installedConflicts().map((item) => item.name), ...configConflicts(resolved)];
+          const found = configConflicts(resolved);
+          noteConfigConflicts(found);
+          const conflicts = [...installedConflicts().map((item) => item.name), ...found];
           if (conflicts.length > 0) {
             if (!warned) {
               warned = true;
@@ -209,11 +212,16 @@ export default class StrataGate {
       }
     }, { global: true });
     ctx.provide(GATE_SERVICE, {});
-    // Composer dock status (Web / Desktop only; a no-op without a web server).
     let version = "";
     try {
       version = require("./package.json").version;
     } catch {}
+    // Read-only diagnosis status for another plugin's diagnosis session
+    // (lib/diagnosis.js): statusBlock({ lang }) returns the block or null, never throws.
+    try {
+      ctx.provide(DIAGNOSIS_SERVICE, createDiagnosisService({ version }));
+    } catch {}
+    // Composer dock status (Web / Desktop only; a no-op without a web server).
     registerGuiRoutes(ctx, version);
     // Shared token budget for context-injecting plugins (interop §2).
     if (typeof ctx.inject === "function") {

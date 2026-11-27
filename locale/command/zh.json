@@ -3,7 +3,7 @@
   "help": {
     "title": "Strata 分层上下文：/strata 命令",
     "status": "简要状态：上下文占用、各层大小、缓存命中率",
-    "detail": "分节详情（排错用）：概览、分层、自动折叠、可折叠范围、缓存与成本、最近变化",
+    "detail": "分节详情（排错用）：概览、分层、自动折叠、可折叠范围、缓存与成本、最近变化、诊断信息",
     "detailFull": "详情，并列出每个可折叠范围里的每条消息",
     "search": "检索本会话的本地存档",
     "searchExample": "/strata search 构建错误",
@@ -79,6 +79,7 @@
     "archive": "本会话的本地存档",
     "changes": "6. 最近的上下文变化",
     "changesNone": "暂无",
+    "diagnosis": "7. 诊断信息（可复制）",
     "changeL1": "卡片",
     "changeL2": "折叠 T{tier}",
     "changeL2auto": "自动折叠 T{tier}",
