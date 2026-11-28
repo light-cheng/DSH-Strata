@@ -443,3 +443,46 @@ test("status payload: dockDetails follows the page, STRATA_DOCK_DETAILS wins", a
     setPageConfig(before);
   }
 });
+
+test("dock client: the settings-reset line stays on the card for the hover that acknowledged it, then is gone", () => {
+  const { dockState, resetOnEnter, resetLine, zh: dict } = loadClient();
+  const t = (key) => dict[key] ?? key;
+  const tz = translator("zh");
+  const now = 7_000_000;
+  const settings = readSettings();
+  const id = "hover-reset-session";
+  resetActivity();
+  resetLedger();
+  recordUsage(id, { totalTokens: 40_000, window: 1_000_000, tiers: [0, 0, 0] });
+  const status = (seen) => ({ takeover: "active", now, usage: { totalTokens: 40_000, window: 1_000_000 }, plain: plainStatus(id, tz, { settings, now, reset: { bak: "/tmp/dsh/profile/settings.json.1764300000000.bak", seen } }) });
+  const before = status(false);
+  const hint = before.plain.details.at(-1);
+  assert.ok(hint.includes("/tmp/dsh/profile/settings.json.1764300000000.bak"), "the reset line is the last detail line");
+  assert.equal(resetLine(before.plain), hint);
+  // 1. The hover starts: ack sent, the line held. The next poll says resetHint=false; the card still shows it.
+  const enter = resetOnEnter({ data: before, intro: null, acked: false });
+  assert.equal(JSON.stringify(enter), JSON.stringify({ ack: true, held: hint }));
+  const after = status(true);
+  assert.equal(after.plain.resetHint, false);
+  assert.ok(!after.plain.details.includes(hint), "the server stopped sending it");
+  const during = dockState(t, { data: after, misses: 0, play: null, now, heldReset: enter.held });
+  assert.equal(during.hover.at(-1), hint, "still on the card while the pointer stays");
+  assert.equal(during.hover.filter((line) => line === hint).length, 1);
+  // Before the poll lands the line is not doubled.
+  assert.equal(dockState(t, { data: before, misses: 0, play: null, now, heldReset: hint }).hover.filter((line) => line === hint).length, 1);
+  // A second enter during the same hover (focus after mouseenter) sends no second ack.
+  assert.equal(resetOnEnter({ data: before, intro: null, acked: true }).ack, false);
+  // 2. The pointer leaves (held cleared), then hovers again: no ack, no line.
+  const again = resetOnEnter({ data: after, intro: null, acked: false });
+  assert.equal(JSON.stringify(again), JSON.stringify({ ack: false, held: "" }));
+  assert.ok(!dockState(t, { data: after, misses: 0, play: null, now, heldReset: again.held }).hover.includes(hint));
+  // 3. Never a hint: nothing held, the card is as before.
+  const plainData = { ...after, plain: plainStatus(id, tz, { settings, now, reset: null }) };
+  assert.equal(JSON.stringify(resetOnEnter({ data: plainData, intro: null, acked: false })), JSON.stringify({ ack: false, held: "" }));
+  assert.equal(JSON.stringify(dockState(t, { data: plainData, misses: 0, play: null, now }).hover), JSON.stringify(plainData.plain.details));
+  // The first-run note owns the dock: no ack under it (as before).
+  assert.equal(resetOnEnter({ data: before, intro: { text: "x" }, acked: false }).ack, false);
+  // Not active or unavailable: the card has no detail lines, the held one included.
+  assert.equal(JSON.stringify(dockState(t, { data: { ...after, takeover: "stock" }, misses: 0, play: null, now, heldReset: hint }).hover), JSON.stringify([]));
+  assert.ok(!dockState(t, { data: after, misses: 3, play: null, now, heldReset: hint }).hover.includes(hint));
+});

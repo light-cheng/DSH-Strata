@@ -364,6 +364,23 @@ window.__ModuleLoader__.load({
       return t(error.layer === 'L2' ? 'errorFold' : error.layer === 'L1' ? 'errorCard' : 'error')
     }
 
+    /** The settings-reset line of a status that carries it: lib/plain.js appends it last to the details. */
+    function resetLine(plain) {
+      if (plain?.resetHint !== true) return ''
+      const lines = Array.isArray(plain.details) ? plain.details : Array.isArray(plain.hover) ? plain.hover : []
+      return lines.length ? String(lines[lines.length - 1]) : ''
+    }
+
+    /**
+     * A hover (or focus) starting on the dock: acknowledge the settings-reset
+     * hint when the card shows it for the first time, and hold its line for
+     * this hover. The hold is dropped when the hover ends (`resume`).
+     */
+    function resetOnEnter({ data, intro, acked }) {
+      if (data?.plain?.resetHint !== true || intro || acked) return { ack: false, held: '' }
+      return { ack: true, held: resetLine(data.plain) }
+    }
+
     /**
      * What the dock shows. Red only for a stored compaction failure (a card or
      * fold that did not land); a status poll that keeps failing is a neutral
@@ -373,9 +390,11 @@ window.__ModuleLoader__.load({
      * the hover card's first sentence. Otherwise the chip shows `short`. A
      * failure stays red until it ages out or the next success; after its
      * notice the chip keeps the short failure text, it does not settle back.
-     * `hover` holds the card's detail lines.
+     * `hover` holds the card's detail lines. `heldReset` is the settings-reset
+     * line captured when this hover acknowledged it: the next poll no longer
+     * sends it, but the card keeps it until the hover ends.
      */
-    function dockState(t, { data, misses, play, now, details = data?.dockDetails === true, dwell = null }) {
+    function dockState(t, { data, misses, play, now, details = data?.dockDetails === true, dwell = null, heldReset = '' }) {
       let state = 'idle'
       let title = t('open')
       // Error age by the server's clock (the status carries `now`).
@@ -407,6 +426,7 @@ window.__ModuleLoader__.load({
       } else if (play?.event && now < play.until) {
         state = 'success'
       }
+      if (heldReset && state !== 'off' && state !== 'unavailable' && !hover.includes(heldReset)) hover = [...hover, heldReset]
       const dwelling = !details && state !== 'off' && state !== 'unavailable' && dwellActive(dwell, now)
       const label = details ? full : dwelling ? dwell.notice.text : short
       return { state, label, full, short, title, hover, last: state === 'off' || state === 'unavailable' ? '' : last, dwelling, details }
@@ -430,8 +450,10 @@ window.__ModuleLoader__.load({
       // Shown once per mounted dock; acknowledged once it is on screen (retried on later polls if that failed).
       const introShown = useRef(false)
       const introAcked = useRef(false)
-      // The settings-reset hint is in the hover card once: acknowledged when the card is opened.
+      // The settings-reset hint is in the hover card once: acknowledged when the card is opened,
+      // and kept on the card (heldReset) until that hover ends, though later polls no longer send it.
       const resetAcked = useRef(false)
+      const [heldReset, setHeldReset] = useState('')
       const seen = useRef(null)
       const [, setTick] = useState(0)
 
@@ -519,7 +541,7 @@ window.__ModuleLoader__.load({
       }, [intro])
 
       const now = Date.now()
-      const view = dockState(t, { data, misses, play, now, dwell })
+      const view = dockState(t, { data, misses, play, now, dwell, heldReset })
       const { state, label, full, hover, last } = view
 
       const open = () => {
@@ -532,8 +554,10 @@ window.__ModuleLoader__.load({
       const pause = () => {
         hovered.current = true
         setDwell((current) => pauseDwell(current, Date.now()))
-        if (data?.plain?.resetHint === true && !intro && !resetAcked.current) {
+        const enter = resetOnEnter({ data, intro, acked: resetAcked.current })
+        if (enter.ack) {
           resetAcked.current = true
+          setHeldReset(enter.held)
           void ackReset().then((ok) => {
             if (!ok) resetAcked.current = false
           })
@@ -542,6 +566,7 @@ window.__ModuleLoader__.load({
       const resume = () => {
         hovered.current = false
         setDwell((current) => resumeDwell(current, Date.now()))
+        setHeldReset('')
       }
       const onBlur = (event) => {
         if (event.currentTarget.contains?.(event.relatedTarget)) return
@@ -1010,6 +1035,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, eventSentence, kTokens, observe, pushRecent, startDwell, pauseDwell, resumeDwell, dwellActive, dockState, SHOW_MS, RECENT_MAX, en, zh, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
+    return { inject: ['slots', 'locale'], apply, __test: { pickEvent, eventLabel, eventSentence, kTokens, observe, pushRecent, startDwell, pauseDwell, resumeDwell, dwellActive, dockState, resetLine, resetOnEnter, SHOW_MS, RECENT_MAX, en, zh, settingsEn, settingsZh, normalise, draftProblem, saveOps, resetOps, DEFAULTS } }
   },
 })
