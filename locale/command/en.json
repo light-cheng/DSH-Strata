@@ -3,7 +3,7 @@
   "help": {
     "title": "Strata Context: /strata commands",
     "status": "Short summary: context use, layers, cache hit rate",
-    "detail": "Detail in sections, for troubleshooting: overview, layers, automatic folds, foldable ranges, cache and cost, recent changes",
+    "detail": "Detail in sections, for troubleshooting: overview, layers, automatic folds, foldable ranges, cache and cost, recent changes, diagnostic info",
     "detailFull": "Detail plus every message in each foldable range",
     "search": "Search this session's local archive",
     "searchExample": "/strata search build error",
@@ -79,6 +79,7 @@
     "archive": "Local archive for this session",
     "changes": "6. Recent context changes",
     "changesNone": "none yet",
+    "diagnosis": "7. Diagnostic info (copy)",
     "changeL1": "card",
     "changeL2": "fold T{tier}",
     "changeL2auto": "automatic fold T{tier}",
