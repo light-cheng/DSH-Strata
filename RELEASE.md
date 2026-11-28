@@ -4,10 +4,27 @@ English is the default; the Chinese version follows below.
 
 ## English
 
-### Unreleased
+### v0.5.1 — 2026-11-28
 
-- If the settings page's values are gone after DSH's crash recovery, Strata says so: `/strata detail` and, once, the status bar's hover card point at the `cordis.patch.yml.bak-*` backup. Strata only looks at the backup's file name (the time in it) and writes no profile file.
-- Desktop: If DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder.
+0.5.1 makes the status bar quieter and easier to read, warns you when DSH's crash recovery has cleared Strata's settings, and adds a copyable diagnostic block for DSH's "let DSH diagnose".
+
+Highlights:
+
+- **Shorter status bar:** the dock under the composer shows a short status (`Saved 1.4M`, `Tidied 1×`, `Context 23.0%`, `Ready`). When something new happens (a fold lands, the status changes kind, a new rejection or failure), it shows the full sentence for 8 seconds, then goes back to the short one; hovering or focusing it pauses the timer. A failure still stays red as **Fold failed** until the next success or 10 minutes. Large numbers use at most one decimal and switch to M from a million (`1.4M`, not `1393.0K`).
+- **Hover card with the last 5 events:** the hover card shows a title, the full sentence, the last 5 events of this session with their times (newest first), the usual details, and **Open settings** / **More: /strata detail** at the bottom. You can move the mouse onto the card and click it. The last 5 events are kept in the page only and are cleared when it reloads.
+- **`dockDetails` setting:** the settings page's switches have a new **Show details in the status bar** (off by default). On, the dock always shows the full sentence. `STRATA_DOCK_DETAILS=on/off` wins over the page.
+- **Settings reset after a crash:** if the settings page's values are gone after DSH's crash recovery, Strata says so: `/strata detail` has a notice, and the status bar's hover card shows it once, pointing at the `cordis.patch.yml.bak-*` backup. The line stays on the card for the whole hover and does not come back on the next hover. Strata only looks at the backup's file name (the time in it) and writes no profile file.
+- **Diagnostic info:** `/strata detail` ends with a **Diagnostic info (copy)** section: a short status block (mode, fold count, context use, last rejection or failure, conflicts, settings reset) in the same format as DSH-Mem0, ready to paste. It has no conversation text, no paths, no ids and no keys. Other plugins can read the same block through the read-only `dshDiagnosisStrata` service.
+
+Also in this release:
+
+- Desktop: if DSH shows a "startup failed" dialog, choose Restart first, not "Disable third-party plugins, back up the profile patch and restart". The latter clears Strata's settings-page values (the `strata-gate` block); the backup is `cordis.patch.yml.bak-<ms>` in the profile folder.
+
+Verification:
+- 211 unit tests pass on Ubuntu, macOS and Windows (Node 22 / 24); `npm run check` passes.
+- Settings-reset notice: isolated test on macOS with `dsh web` passed (detection, `/strata detail`, hover card once, no profile file written). The hover fix was re-tested by Codex in an isolated `dsh web`: the line stayed at 0, 1, 4 and 8 seconds and did not come back on the next hover.
+- Status bar details and diagnostic info: quick-tested by the user on macOS.
+- Not tested: the crash-recovery notice on Windows and in the desktop app with a real crash dialog.
 
 ### v0.5.0 — 2026-11-21
 
@@ -125,10 +142,27 @@ Verification: 32 unit tests pass; real-model runs with DeepSeek V4.1 Flash recov
 
 ## 简体中文
 
-### 未发布
+### v0.5.1 — 2026-11-28
 
-- 设置页的值被 DSH 的崩溃恢复清空后，Strata 会提示：`/strata detail` 里有一节，底部栏悬浮窗显示一次，指向 `cordis.patch.yml.bak-*` 备份。Strata 只看备份的文件名（取其中的时间），不写任何 profile 文件。
+0.5.1 让状态栏更安静、更好读；DSH 的崩溃恢复清空了 Strata 的设置时会提醒你；并新增一段可以复制的诊断信息，供 DSH 的「让 DSH 诊断」使用。
+
+重点：
+
+- **状态栏变短：** 输入框下方的底部栏平时只显示短句（`已省 1.4M`、`已整理 1 次`、`上下文 23.0%`、`待命`）。有新情况时（折叠落地、状态类型变化、新的拒收或失败），先显示完整句 8 秒，再回到短句；鼠标悬停或键盘聚焦时暂停计时。失败照旧显示红色的 **折叠失败**，直到下一次成功或 10 分钟后。大数字最多一位小数，满一百万改用 M（`1.4M`，不再是 `1393.0K`）。
+- **悬浮窗显示最近 5 条：** 悬浮窗从上到下是标题、完整句、本会话最近 5 条记录（带时间，新的在上）、原有的细节行，末行是 **打开设置** 和 **更多：/strata detail**。鼠标可以移到悬浮窗上点击。最近 5 条只存在页面里，页面重载后清空。
+- **`dockDetails` 设置：** 设置页的开关区新增 **底部栏显示详情**（默认关）。打开后，底部栏一直显示完整句。`STRATA_DOCK_DETAILS=on/off` 优先于设置页。
+- **崩溃后设置被清空的提醒：** 设置页的值被 DSH 的崩溃恢复清空后，Strata 会提示：`/strata detail` 里有一节提醒，底部栏悬浮窗显示一次，指向 `cordis.patch.yml.bak-*` 备份。悬停期间这一行一直在，下次悬停不再出现。Strata 只看备份的文件名（取其中的时间），不写任何 profile 文件。
+- **诊断信息：** `/strata detail` 末尾新增 **诊断信息（可复制）**：一段简短的状态块（模式、折叠次数、上下文占用、上次拒收或失败、冲突插件、设置是否被重置），格式和 DSH-Mem0 统一，可以直接粘贴。不含对话内容、路径、id 和密钥。其他插件可以通过只读服务 `dshDiagnosisStrata` 读到同一段内容。
+
+其他：
+
 - 桌面版：遇到 DSH「启动失败」对话框，先选「重启」，不要选「禁用第三方插件、备份 profile patch 并重启」。选了后者，Strata 设置页的配置（`strata-gate` 块）会被清空，备份在 profile 目录的 `cordis.patch.yml.bak-<毫秒>`。
+
+验证：
+- 211 个单元测试在 Ubuntu、macOS、Windows（Node 22 / 24）上全部通过；`npm run check` 通过。
+- 设置被清空的提醒：macOS + `dsh web` 隔离实测通过（检测、`/strata detail`、悬浮窗只提示一次、不写 profile 文件）。悬停修复由 Codex 在隔离的 `dsh web` 里复测：0、1、4、8 秒提示行一直在，下次悬停不再出现。
+- 底部栏详情和诊断信息：用户在 macOS 上速测通过。
+- 没测：Windows 和桌面版上用真实崩溃对话框测试这条提醒。
 
 ### v0.5.0 — 2026-11-21
 
